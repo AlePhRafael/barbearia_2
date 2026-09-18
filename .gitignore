@@ -1,0 +1,14 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env*
+playwright-report/
+test-results/
+backend/.venv/
+__pycache__/
+.pytest_cache/
+*.sqlite3
+*.sqlite3-*
+*.db
+.local-run/
+!.env.example
