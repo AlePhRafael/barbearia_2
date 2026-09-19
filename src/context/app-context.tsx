@@ -10,22 +10,17 @@ import {
 } from "react";
 import {
   ApiError,
+  Appointment,
+  BookingDraft,
   Catalog,
   message,
   parseCatalog,
+  parseAppointment,
   parseOk,
   parseUser,
   request,
 } from "@/lib/api";
-type Booking = {
-  services: string[];
-  barber: string;
-  date: string;
-  time: string;
-  name: string;
-  phone: string;
-  note: string;
-};
+type Booking = BookingDraft;
 const blank: Booking = {
   services: [],
   barber: "",
@@ -37,6 +32,15 @@ const blank: Booking = {
 };
 function useAppState() {
   const [booking, setBooking] = useState<Booking>(blank);
+  const [step, setStep] = useState(0);
+  const [bookingError, setBookingError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState(false);
+  const [confirmed, setConfirmed] = useState<Appointment | null>(null);
+  const [availabilityRevision, setAvailabilityRevision] = useState(0);
+  const attempt = useRef<{ body: string; key: string } | null>(null);
+  const submitting = useRef(false);
+  const preselected = useRef(false);
   const [catalog, setCatalog] = useState<Catalog>({
     services: [],
     barbers: [],
@@ -96,7 +100,67 @@ function useAppState() {
     (patch: Partial<Booking>) => setBooking((b) => ({ ...b, ...patch })),
     [],
   );
-  const reset = () => setBooking({ ...blank });
+  const preselectService = useCallback((id: string) => {
+    if (preselected.current || submitting.current || attempt.current) return;
+    preselected.current = true;
+    setBooking((draft) =>
+      draft.services.length ? draft : { ...draft, services: [id] },
+    );
+  }, []);
+  const reset = () => {
+    if (submitting.current) return;
+    setBooking({ ...blank });
+    setStep(0);
+    setBookingError("");
+    setFieldErrors({});
+    setConfirmed(null);
+    attempt.current = null;
+    preselected.current = true;
+  };
+  const confirm = async () => {
+    if (submitting.current || confirmed) return;
+    submitting.current = true;
+    setPending(true);
+    setBookingError("");
+    setFieldErrors({});
+    const body = JSON.stringify(booking);
+    if (!attempt.current || attempt.current.body !== body)
+      attempt.current = { body, key: crypto.randomUUID() };
+    try {
+      const appointment = await request("/api/appointments", parseAppointment, {
+        method: "POST",
+        body,
+        headers: { "Idempotency-Key": attempt.current.key },
+      });
+      setConfirmed(appointment);
+      setStep(4);
+    } catch (error) {
+      setBookingError(message(error));
+      if (error instanceof ApiError) {
+        setFieldErrors(error.fields);
+        if (error.code === "invalid_services" || error.fields.services)
+          setStep(0);
+        else if (error.code === "invalid_barber" || error.fields.barber)
+          setStep(1);
+        else if (
+          error.code === "invalid_schedule" ||
+          error.code === "slot_unavailable" ||
+          error.fields.date ||
+          error.fields.time
+        ) {
+          update({ time: "" });
+          setStep(2);
+          setAvailabilityRevision((n) => n + 1);
+        } else if (
+          ["name", "phone", "note"].some((field) => error.fields[field])
+        )
+          setStep(3);
+      }
+    } finally {
+      submitting.current = false;
+      setPending(false);
+    }
+  };
   const login = async (username: string, password: string) => {
     sessionRevision.current++;
     await request("/api/auth/login", parseUser, {
@@ -127,6 +191,17 @@ function useAppState() {
   const selected = services.filter((s) => booking.services.includes(s.id));
   return {
     booking,
+    step,
+    setStep,
+    bookingError,
+    setBookingError,
+    fieldErrors,
+    setFieldErrors,
+    pending,
+    confirmed,
+    confirm,
+    preselectService,
+    availabilityRevision,
     update,
     reset,
     services,

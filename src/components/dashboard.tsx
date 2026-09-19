@@ -205,6 +205,32 @@ export default function Dashboard() {
           ).map(([id, label, Icon]) => (
             <button
               role="tab"
+              id={`tab-${id}`}
+              aria-controls={`panel-${id}`}
+              tabIndex={tab === id ? 0 : -1}
+              onKeyDown={(event) => {
+                const tabs = Array.from(
+                  event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>(
+                    '[role="tab"]',
+                  ),
+                );
+                const index = tabs.indexOf(event.currentTarget);
+                const next =
+                  event.key === "ArrowRight"
+                    ? (index + 1) % tabs.length
+                    : event.key === "ArrowLeft"
+                      ? (index + tabs.length - 1) % tabs.length
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? tabs.length - 1
+                          : null;
+                if (next !== null) {
+                  event.preventDefault();
+                  tabs[next].focus();
+                  tabs[next].click();
+                }
+              }}
               aria-selected={tab === id}
               key={id as string}
               className={tab === id ? "active" : ""}
@@ -278,6 +304,10 @@ export default function Dashboard() {
         ))}
       </div>
       <section
+        role="tabpanel"
+        id={`panel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
+        tabIndex={0}
         className="panel dashboard-content"
         hidden={loadFailed || loadedKey !== agendaKey}
       >
@@ -353,6 +383,27 @@ export default function Dashboard() {
                               <option key={s}>{s}</option>
                             ))}
                           </select>
+                          <details className="appointment-details">
+                            <summary>
+                              Detalhes do atendimento de {a.name}
+                            </summary>
+                            <dl>
+                              <div>
+                                <dt>Código</dt>
+                                <dd>{a.id}</dd>
+                              </div>
+                              <div>
+                                <dt>Duração</dt>
+                                <dd>{a.duration} minutos</dd>
+                              </div>
+                              <div>
+                                <dt>Observação</dt>
+                                <dd>
+                                  {a.note.trim() ? a.note : "Sem observações"}
+                                </dd>
+                              </div>
+                            </dl>
+                          </details>
                         </div>
                       ))
                     ) : (

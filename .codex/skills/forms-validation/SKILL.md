@@ -5,50 +5,17 @@ description: "Criar ou ajustar campos e validações do projeto Lâmina & Ouro. 
 
 # Formulários e validação
 
-## Base existente
-
-Leia src/components/booking.tsx, src/components/login.tsx e
-tests/flows.test.tsx conforme a tarefa.
-
-Os formulários são controlados por estado React. Dados da reserva
-ficam em useApp; usuário e senha do login ficam no componente.
-A implementação combina validação HTML e verificações manuais.
-Não há React Hook Form, Zod ou biblioteca de máscaras instalada.
-
-## Regras atuais
-
-- Nome: ao menos três caracteres após trim na validação.
-  A regra atual não exige dois sobrenomes ou quantidade de palavras.
-- Telefone: dez ou onze dígitos após remover caracteres não numéricos,
-  incluindo DDD. A validação atual não comprova que o número existe.
-- Observação: opcional, com maxLength de 500 no textarea.
-- Login: credenciais demonstrativas verificadas no cliente,
-  com campos obrigatórios.
-- Erros são apresentados em português com role="alert".
-
-## Como alterar
-
-- Preserve o envio por form/onSubmit e a navegação por teclado.
-- Use labels associados, tipos de input e autocomplete apropriados.
-- Diferencie o valor exibido, a validação e o valor persistido.
-  Hoje a remoção de pontuação do telefone ocorre na validação;
-  não presuma que o dado salvo já esteja normalizado.
-- Não imponha novas regras de nome, telefone ou campos obrigatórios
-  sem que façam parte da tarefa.
-- Mantenha os dados preenchidos quando ocorrer erro.
-- Ao acrescentar erros por campo, associe-os com aria-describedby
-  e sinalize campos inválidos com aria-invalid.
-- Use type="button" para ações internas que não submetem o formulário.
-- Adote uma biblioteca de formulário apenas se a complexidade da
-  tarefa justificar a dependência.
-- Em uma integração real, repita as regras no servidor; atributos
-  HTML e validação cliente não garantem integridade dos dados.
-
-## Verificação
-
-Teste valores válidos e inválidos, nome composto apenas de espaços,
-telefone com pontuação e persistência dos campos após erro quando
-esses comportamentos forem afetados.
-
-Siga o padrão de Testing Library e user-event, consultando campos
-por label e ações por papel acessível.
+Leia booking.tsx, login.tsx, api.ts, backend/app/main.py e testes relacionados.
+Formulários são controlados em React, sem biblioteca de formulários instalada.
+Nome: mínimo de três caracteres após trim e máximo de 200; não exigir sobrenomes.
+Telefone: máximo de 30 caracteres na entrada e 10 ou 11 dígitos após remover pontuação.
+A API persiste dígitos; a validação não comprova existência do número.
+Observação opcional, até 500 caracteres. Login é validado no servidor, não no cliente.
+Preserve form/onSubmit, labels, autocomplete, teclado e dados após falhas.
+Use limites HTML e validação equivalente no servidor. Não acrescente regras sem tarefa.
+Erros usam role=alert e campos usam aria-invalid/aria-describedby. Foque o primeiro
+campo inválido. code/fields da API direcionam à etapa correta; erros desconhecidos não
+devem limpar horário nem redirecionar. Nunca devolva os valores recebidos em erros.
+Botões internos usam type=button quando dentro de formulário.
+Teste nome só com espaços, telefone pontuado, limites, erros por campo e preservação do rascunho.
+Use Testing Library/user-event com consultas por papel e label.

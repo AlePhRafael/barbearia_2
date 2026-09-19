@@ -123,12 +123,19 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+class BookingError(HTTPException):
+    def __init__(self, status, detail, code, fields=None):
+        super().__init__(status, detail)
+        self.code = code
+        self.fields = fields or {}
+
+
 def selected_services(connection, ids):
     if not ids or len(set(ids)) != len(ids) or ("combo" in ids and {"corte", "barba"}.intersection(ids)):
-        raise HTTPException(422, "Seleção de serviços inválida.")
+        raise BookingError(422, "Seleção de serviços inválida.", "invalid_services")
     rows = connection.execute(select(services).where(services.c.id.in_(ids))).mappings().all()
     if len(rows) != len(ids):
-        raise HTTPException(422, "Serviço desconhecido.")
+        raise BookingError(422, "Serviço desconhecido.", "invalid_services")
     return rows
 
 
@@ -136,7 +143,7 @@ def candidates(connection, barber):
     rows = connection.execute(select(barbers).order_by(barbers.c.position)).mappings().all()
     result = [b["id"] for b in rows if barber == "any" or b["id"] == barber]
     if not result:
-        raise HTTPException(422, "Profissional desconhecido.")
+        raise BookingError(422, "Profissional desconhecido.", "invalid_barber")
     return result
 
 
@@ -162,8 +169,9 @@ def free(connection, day, slot, duration, barber_ids, exclude=None):
     return [barber for barber in barber_ids if barber not in occupied]
 
 
-def serialize(connection, row):
-    parts = connection.execute(select(items).where(items.c.appointment_id == row["id"])).mappings().all()
+def serialize(connection, row, parts=None):
+    if parts is None:
+        parts = connection.execute(select(items).where(items.c.appointment_id == row["id"])).mappings().all()
     return {**{key: row[key] for key in ("id", "name", "phone", "note", "barber", "date", "time", "status", "duration")},
             "totalCents": row["total_cents"], "services": [p["service_id"] for p in parts],
             "items": [{"id": p["service_id"], "name": p["name"], "priceCents": p["price_cents"], "duration": p["duration"]} for p in parts]}
@@ -184,7 +192,26 @@ def create_app(path=None):
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request, _error):
-        return JSONResponse(status_code=422, content={"detail": "Confira os campos informados: nome, telefone, serviços, data e horário."})
+        messages = {
+            "name": "Informe um nome entre 3 e 200 caracteres.",
+            "phone": "Informe um telefone com DDD, 10 ou 11 dígitos e até 30 caracteres.",
+            "note": "A observação deve ter até 500 caracteres.",
+            "services": "Confira os serviços selecionados.",
+            "barber": "Confira o profissional selecionado.",
+            "date": "Informe uma data válida.",
+            "time": "Informe um horário válido.",
+        }
+        fields = {str(error["loc"][1]): messages[str(error["loc"][1])]
+                  for error in _error.errors()
+                  if len(error["loc"]) > 1 and error["loc"][0] == "body"
+                  and str(error["loc"][1]) in messages}
+        return JSONResponse(status_code=422, content={
+            "detail": "Confira os campos informados.", "code": "validation_error", "fields": fields})
+
+    @app.exception_handler(BookingError)
+    async def booking_error(_request, error):
+        return JSONResponse(status_code=error.status_code, content={
+            "detail": error.detail, "code": error.code, "fields": error.fields})
 
     @app.exception_handler(OperationalError)
     async def database_error(_request, _error):
@@ -229,7 +256,15 @@ def create_app(path=None):
         rows = selected_services(conn, services)
         ids = candidates(conn, barber)
         duration = sum(s["duration"] for s in rows)
-        return {"slots": [s for s in SLOTS if valid_time(date, s, duration) and free(conn, date, s, duration, ids)]}
+        occupied = conn.execute(select(appointments.c.barber, appointments.c.start_minute, appointments.c.duration).where(
+            appointments.c.date == date.isoformat(), appointments.c.status != "cancelado",
+            appointments.c.barber.in_(ids))).mappings().all()
+        def available(slot):
+            start = minute(slot)
+            busy = {row["barber"] for row in occupied
+                    if row["start_minute"] < start + duration and row["start_minute"] + row["duration"] > start}
+            return any(barber_id not in busy for barber_id in ids)
+        return {"slots": [s for s in SLOTS if valid_time(date, s, duration) and available(s)]}
 
     @app.post("/api/appointments", status_code=201, response_model=AppointmentOutput)
     def create_booking(body: BookingInput, idempotency_key: str = Header(min_length=16, max_length=100)):
@@ -238,16 +273,16 @@ def create_app(path=None):
             existing = conn.execute(select(appointments).where(appointments.c.idempotency_key == idempotency_key)).mappings().first()
             if existing:
                 if existing["request_hash"] != request_hash:
-                    raise HTTPException(409, "Chave de confirmação já usada para outra reserva.")
+                    raise BookingError(409, "Chave de confirmação já usada para outra reserva.", "idempotency_conflict")
                 return serialize(conn, existing)
             rows = selected_services(conn, body.services)
             ids = candidates(conn, body.barber)
             duration = sum(s["duration"] for s in rows)
             if not valid_time(body.date, body.time, duration):
-                raise HTTPException(422, "Data ou horário fora do expediente ou já encerrado.")
+                raise BookingError(422, "Data ou horário fora do expediente ou já encerrado.", "invalid_schedule")
             available = free(conn, body.date, body.time, duration, ids)
             if not available:
-                raise HTTPException(409, "Este horário não está mais disponível. Escolha outro.")
+                raise BookingError(409, "Este horário não está mais disponível. Escolha outro.", "slot_unavailable")
             code = "VT-" + secrets.token_hex(3).upper()
             while conn.execute(select(appointments.c.id).where(appointments.c.id == code)).first():
                 code = "VT-" + secrets.token_hex(3).upper()
@@ -269,7 +304,14 @@ def create_app(path=None):
         if barber:
             candidates(conn, barber)
             query = query.where(appointments.c.barber == barber)
-        return [serialize(conn, row) for row in conn.execute(query.order_by(appointments.c.date, appointments.c.time)).mappings()]
+        rows = conn.execute(query.order_by(appointments.c.date, appointments.c.time)).mappings().all()
+        if not rows:
+            return []
+        grouped = {row["id"]: [] for row in rows}
+        parts_query = select(items).where(items.c.appointment_id.in_(query.with_only_columns(appointments.c.id)))
+        for part in conn.execute(parts_query).mappings():
+            grouped[part["appointment_id"]].append(part)
+        return [serialize(conn, row, grouped[row["id"]]) for row in rows]
 
     @app.patch("/api/appointments/{code}/status", dependencies=[Depends(staff)], response_model=AppointmentOutput)
     def change_status(code: str, body: StatusInput):

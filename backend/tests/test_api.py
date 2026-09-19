@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import insert, select, update
+from sqlalchemy import event, insert, select, update
 
 from app.cli import backup, migrate, seed
 from app.db import appointments, services, sessions, users
@@ -176,3 +176,58 @@ def test_seed_is_repeatable_without_fake_bookings(setup):
     assert len(client.get("/api/catalog").json()["services"]) == 4
     with app.state.engine.connect() as conn:
         assert not conn.execute(select(appointments)).all()
+
+
+@pytest.mark.parametrize("field,value", [("name", "x" * 201), ("phone", "1" * 31), ("note", "x" * 501)])
+def test_field_errors_without_personal_values(setup, field, value):
+    response = book(setup[0], payload(**{field: value}))
+    assert response.status_code == 422
+    data = response.json()
+    assert isinstance(data["detail"], str)
+    assert data["code"] == "validation_error" and field in data["fields"]
+    assert value not in response.text and "Cliente Teste" not in response.text
+
+
+def test_booking_error_categories_and_limits(setup):
+    client, _, _ = setup
+    assert book(client, payload(services=["missing"])).json()["code"] == "invalid_services"
+    assert book(client, payload(barber="missing")).json()["code"] == "invalid_barber"
+    assert book(client, payload(time="18:00")).json()["code"] == "invalid_schedule"
+    key = str(uuid.uuid4())
+    assert book(client, payload(name="x" * 200, note="x" * 500), key).status_code == 201
+    assert book(client).json()["code"] == "slot_unavailable"
+    assert book(client, payload(time="10:00"), key).json()["code"] == "idempotency_conflict"
+
+
+def test_queries_batched_and_availability_equivalent(setup):
+    client, app, _ = setup
+    login(client)
+    statements = []
+    def count(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+    event.listen(app.state.engine, "before_cursor_execute", count)
+    try:
+        first = book(client, payload(services=["barba"], note="Detalhe")).json()
+        statements.clear()
+        single = client.get("/api/appointments?start=2030-01-07&end=2030-01-07").json()
+        single_count = len(statements)
+        assert single == [first]
+        second = book(client, payload(time="10:00", services=["combo", "sobrancelha"])).json()
+        statements.clear()
+        rows = client.get("/api/appointments?start=2030-01-07&end=2030-01-07").json()
+        assert len(statements) == single_count == 3  # session, appointments, all items
+        assert rows == [first, second]
+        statements.clear()
+        result = client.get("/api/availability?date=2030-01-07&barber=rafael&services=barba").json()
+        assert len(statements) == 3  # services, barbers, all occupied intervals
+        assert "09:00" not in result["slots"] and "09:30" in result["slots"]
+        assert "10:00" not in result["slots"] and "11:00" not in result["slots"]
+        assert "11:30" in result["slots"] and set(result) == {"slots"}
+        any_result = client.get("/api/availability?date=2030-01-07&barber=any&services=barba").json()
+        assert "09:00" in any_result["slots"]
+        client.patch(f"/api/appointments/{first['id']}/status", json={"status": "cancelado"})
+        assert "09:00" in client.get("/api/availability?date=2030-01-07&barber=rafael&services=barba").json()["slots"]
+        assert client.get("/api/appointments?start=2030-01-07&end=2030-01-07&barber=lucas").json() == []
+    finally:
+        event.remove(app.state.engine, "before_cursor_execute", count)

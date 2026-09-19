@@ -25,14 +25,7 @@ import {
   barberImages,
   shopDate,
 } from "@/data/presentation";
-import {
-  ApiError,
-  Appointment,
-  message,
-  parseAppointment,
-  parseSlots,
-  request,
-} from "@/lib/api";
+import { message, parseSlots, request } from "@/lib/api";
 const steps = [
   "Serviços",
   "Profissional",
@@ -53,29 +46,44 @@ export default function Booking() {
     catalogLoading,
     catalogError,
     loadCatalog,
+    step,
+    setStep,
+    bookingError: error,
+    setBookingError: setError,
+    fieldErrors,
+    setFieldErrors,
+    pending,
+    confirmed,
+    confirm,
+    preselectService,
+    availabilityRevision,
   } = useApp();
-  const [step, setStep] = useState(0);
   const [month, setMonth] = useState(
-    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    () => new Date((booking.date || shopDate()).slice(0, 7) + "-01T12:00:00"),
   );
-  const [code, setCode] = useState("");
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
-  const [confirmed, setConfirmed] = useState<Appointment | null>(null);
+  const code = confirmed?.id || "";
+  const display = confirmed || booking;
+  const heading = useRef<HTMLHeadingElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const invalid = form.current?.querySelector<HTMLElement>(
+      '[aria-invalid="true"]',
+    );
+    if (invalid) invalid.focus();
+    else heading.current?.focus();
+  }, [step, fieldErrors, code]);
   const [availability, setAvailability] = useState<{
     key: string;
     slots: string[];
   }>({ key: "", slots: [] });
   const [availabilityError, setAvailabilityError] = useState("");
   const [refresh, setRefresh] = useState(0);
-  const attempt = useRef<{ body: string; key: string } | null>(null);
-  const submitting = useRef(false);
-  const preselected = useRef(false);
   const availabilityKey = JSON.stringify([
     booking.services,
     booking.barber,
     booking.date,
     refresh,
+    availabilityRevision,
   ]);
   useEffect(() => {
     if (!booking.date || !booking.barber || !booking.services.length) return;
@@ -103,12 +111,10 @@ export default function Booking() {
     return () => controller.abort();
   }, [availabilityKey, booking.date, booking.barber, booking.services]);
   useEffect(() => {
-    if (preselected.current || !services.length) return;
-    preselected.current = true;
+    if (!services.length || pending || confirmed) return;
     const id = new URLSearchParams(window.location.search).get("servico");
-    if (id && services.some((s) => s.id === id))
-      update({ services: [id], time: "" });
-  }, [update, services]);
+    if (id && services.some((s) => s.id === id)) preselectService(id);
+  }, [preselectService, services, pending, confirmed]);
   const today = shopDate();
   const available = (time: string) =>
     availability.key === availabilityKey && availability.slots.includes(time);
@@ -134,39 +140,6 @@ export default function Booking() {
     )
       return setError("Escolha uma data e um horário disponível.");
     setStep((s) => s + 1);
-  };
-  const confirm = async () => {
-    if (submitting.current) return;
-    submitting.current = true;
-    setPending(true);
-    setError("");
-    const body = JSON.stringify(booking);
-    if (!attempt.current || attempt.current.body !== body)
-      attempt.current = { body, key: crypto.randomUUID() };
-    try {
-      const appointment = await request("/api/appointments", parseAppointment, {
-        method: "POST",
-        body,
-        headers: { "Idempotency-Key": attempt.current.key },
-      });
-      setConfirmed(appointment);
-      update({ barber: appointment.barber });
-      setCode(appointment.id);
-    } catch (error) {
-      setError(message(error));
-      if (
-        error instanceof ApiError &&
-        (error.status === 409 || error.status === 422)
-      ) {
-        update({ time: "" });
-        setStep(2);
-        setRefresh((n) => n + 1);
-        attempt.current = null;
-      }
-    } finally {
-      submitting.current = false;
-      setPending(false);
-    }
   };
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const summaryServices = confirmed
@@ -199,7 +172,7 @@ export default function Booking() {
             <ArrowLeft size={15} /> Voltar para início
           </Link>
           <span className="eyebrow">SEU MOMENTO COMEÇA AQUI · 0{step + 1}</span>
-          <h1>
+          <h1 ref={heading} tabIndex={-1}>
             {
               [
                 "Qual vai ser o ritual?",
@@ -299,6 +272,7 @@ export default function Booking() {
                 </button>
               ))}
               <button
+                aria-pressed={booking.barber === "any"}
                 className={`select-card ${booking.barber === "any" ? "selected" : ""}`}
                 onClick={() => update({ barber: "any", time: "" })}
               >
@@ -365,6 +339,8 @@ export default function Booking() {
                     return (
                       <button
                         key={key}
+                        aria-label={prettyDate(key)}
+                        aria-pressed={booking.date === key}
                         disabled={key < today || d.getDay() === 0}
                         className={booking.date === key ? "selected" : ""}
                         onClick={() => update({ date: key, time: "" })}
@@ -402,6 +378,7 @@ export default function Booking() {
                   <div className="time-grid">
                     {slots.map((t) => (
                       <button
+                        aria-pressed={booking.time === t}
                         disabled={!available(t)}
                         className={booking.time === t ? "selected" : ""}
                         key={t}
@@ -425,16 +402,22 @@ export default function Booking() {
           {step === 3 && (
             <form
               id="customer-form"
+              ref={form}
               onSubmit={(e) => {
                 e.preventDefault();
                 if (booking.name.trim().length < 3) {
+                  setFieldErrors({ name: "Informe seu nome completo." });
                   setError("Informe seu nome completo.");
                   return;
                 }
                 if (!/^\d{10,11}$/.test(booking.phone.replace(/\D/g, ""))) {
+                  setFieldErrors({
+                    phone: "Informe um telefone válido com DDD.",
+                  });
                   setError("Informe um telefone válido com DDD.");
                   return;
                 }
+                setFieldErrors({});
                 next();
               }}
               className="customer-form"
@@ -444,22 +427,40 @@ export default function Booking() {
                 <input
                   required
                   minLength={3}
+                  maxLength={200}
                   autoComplete="name"
                   placeholder="Como podemos chamar você?"
+                  aria-invalid={!!fieldErrors.name}
+                  aria-describedby={fieldErrors.name ? "name-error" : undefined}
                   value={booking.name}
                   onChange={(e) => update({ name: e.target.value })}
                 />
+                {fieldErrors.name && (
+                  <small id="name-error" className="error">
+                    {fieldErrors.name}
+                  </small>
+                )}
               </label>
               <label>
                 Celular com DDD <span>*</span>
                 <input
                   required
                   type="tel"
+                  maxLength={30}
                   autoComplete="tel"
                   placeholder="(11) 99999-9999"
+                  aria-invalid={!!fieldErrors.phone}
+                  aria-describedby={
+                    fieldErrors.phone ? "phone-error" : undefined
+                  }
                   value={booking.phone}
                   onChange={(e) => update({ phone: e.target.value })}
                 />
+                {fieldErrors.phone && (
+                  <small id="phone-error" className="error">
+                    {fieldErrors.phone}
+                  </small>
+                )}
               </label>
               <label>
                 Alguma observação? <small>Opcional</small>
@@ -467,9 +468,16 @@ export default function Booking() {
                   maxLength={500}
                   rows={4}
                   placeholder="Preferências de corte ou algo que devemos saber…"
+                  aria-invalid={!!fieldErrors.note}
+                  aria-describedby={fieldErrors.note ? "note-error" : undefined}
                   value={booking.note}
                   onChange={(e) => update({ note: e.target.value })}
                 />
+                {fieldErrors.note && (
+                  <small id="note-error" className="error">
+                    {fieldErrors.note}
+                  </small>
+                )}
               </label>
               <p className="muted inline-flex gap-2">
                 <ShieldCheck size={17} /> Seus dados são usados apenas para este
@@ -492,11 +500,11 @@ export default function Booking() {
               <dl>
                 <div>
                   <dt>Cliente</dt>
-                  <dd>{booking.name}</dd>
+                  <dd>{display.name}</dd>
                 </div>
                 <div>
                   <dt>Contato</dt>
-                  <dd>{booking.phone}</dd>
+                  <dd>{display.phone}</dd>
                 </div>
                 <div>
                   <dt>Serviços</dt>
@@ -509,20 +517,20 @@ export default function Booking() {
                 <div>
                   <dt>Profissional</dt>
                   <dd>
-                    {barbers.find((b) => b.id === booking.barber)?.name ||
+                    {barbers.find((b) => b.id === display.barber)?.name ||
                       "Sem preferência"}
                   </dd>
                 </div>
                 <div>
                   <dt>Quando</dt>
                   <dd>
-                    {prettyDate(booking.date)} às {booking.time}
+                    {prettyDate(display.date)} às {display.time}
                   </dd>
                 </div>
-                {booking.note && (
+                {display.note && (
                   <div>
                     <dt>Observação</dt>
-                    <dd>{booking.note}</dd>
+                    <dd>{display.note}</dd>
                   </div>
                 )}
                 <div>
@@ -571,10 +579,6 @@ export default function Booking() {
                   className="button"
                   onClick={() => {
                     reset();
-                    setCode("");
-                    setConfirmed(null);
-                    attempt.current = null;
-                    setStep(0);
                   }}
                 >
                   Novo agendamento <ArrowRight size={17} />
@@ -615,20 +619,20 @@ export default function Booking() {
           <div className="summary-line">
             <User size={17} />
             <span>
-              {barbers.find((b) => b.id === booking.barber)?.name ||
-                (booking.barber === "any"
+              {barbers.find((b) => b.id === display.barber)?.name ||
+                (display.barber === "any"
                   ? "Sem preferência"
                   : "Escolha seu profissional")}
             </span>
           </div>
           <div className="summary-line">
             <CalendarDays size={17} />
-            <span>{prettyDate(booking.date)}</span>
+            <span>{prettyDate(display.date)}</span>
           </div>
           <div className="summary-line">
             <Clock size={17} />
             <span>
-              {booking.time || "Escolha um horário"}
+              {display.time || "Escolha um horário"}
               {summaryDuration > 0 && ` · ${summaryDuration} min`}
             </span>
           </div>

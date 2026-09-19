@@ -36,6 +36,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code?: string,
+    public fields: Record<string, string> = {},
   ) {
     super(message);
   }
@@ -153,6 +155,25 @@ export async function request<T>(
         ? detail
         : "Servidor indisponível. Tente novamente.",
       response.status,
+      data &&
+        typeof data === "object" &&
+        "code" in data &&
+        typeof data.code === "string"
+        ? data.code
+        : undefined,
+      data &&
+        typeof data === "object" &&
+        "fields" in data &&
+        data.fields &&
+        typeof data.fields === "object" &&
+        !Array.isArray(data.fields)
+        ? Object.fromEntries(
+            Object.entries(data.fields).filter(
+              (entry): entry is [string, string] =>
+                typeof entry[1] === "string",
+            ),
+          )
+        : {},
     );
   }
   return parse(data);

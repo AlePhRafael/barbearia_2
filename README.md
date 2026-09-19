@@ -118,3 +118,17 @@ npm run build
 Backend, dentro de `backend/`: `.venv/Scripts/python.exe -m pytest tests -q`. Os testes usam bancos temporários isolados, relógio controlado, conexões independentes para concorrência e verificam migrações, persistência, histórico, idempotência, sessão e backup. Vitest usa mocks HTTP, não o banco operacional.
 
 Não há pagamentos, envio de mensagens, cadastro independente de clientes ou editor de catálogo. Todos os usuários da equipe têm o mesmo acesso. Não publique esta configuração na internet: HTTP e cookie sem `Secure` são específicos para loopback local; publicação exige HTTPS, ajustes de cookie/origem e revisão operacional.
+
+### Continuidade e erros do agendamento
+
+Rascunho, etapa, tentativa de confirmação e reserva confirmada ficam no contexto React
+compartilhado. Navegar entre páginas preserva o envio e seu resultado; recarregar a aba
+reinicia esse estado. Nenhum dado do fluxo é gravado no armazenamento do navegador.
+“Novo agendamento” limpa o fluxo. Repetições do mesmo payload reutilizam a chave de
+idempotência após falha de rede; alterações do payload geram outra chave.
+
+Erros de reserva preservam `detail` textual e podem incluir `code` e `fields`
+(mapa de campo para mensagem, sem valores recebidos). Códigos: `validation_error`,
+`invalid_services`, `invalid_barber`, `invalid_schedule`, `slot_unavailable` e
+`idempotency_conflict`. Erros desconhecidos permanecem na etapa atual.
+O painel exibe código, duração e observação nos detalhes expansíveis da agenda.

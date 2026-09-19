@@ -38,6 +38,10 @@ parte do visual é definida por classes semânticas no CSS global.
 - Mantenha foco visível, nomes acessíveis para botões com ícones,
   estados de seleção perceptíveis e suporte a reduced motion.
 - Não dependa apenas de cor para comunicar erro ou seleção.
+- Datas, horários e profissionais usam aria-pressed; datas têm nomes completos.
+- Abas usam foco móvel, setas, Home/End e associação a tabpanel.
+- Detalhes do atendimento usam details/summary com foco visível e quebra de texto.
+- Ao trocar etapa, foque o título ou o primeiro campo inválido.
 - Use next/image com texto alternativo adequado e preserve a
   legibilidade dos textos sobre fotografias.
 

@@ -5,68 +5,23 @@ description: "Integrar o projeto Lâmina & Ouro a backend ou serviços externos.
 
 # Integração com API
 
-## Situação atual
-
-Não há endpoints, cliente HTTP, banco, autenticação real, pagamento
-ou mensageria implementados.
-
-src/data/mock.ts define catálogo, profissionais, Appointment e Status.
-src/context/app-context.tsx mantém reservas e rascunho em memória.
-Booking e Dashboard usam setAppointments diretamente.
-O login e o gate do painel são demonstrativos.
-
-## Antes de implementar
-
-- Leia os tipos, o contexto e os consumidores afetados.
-- Identifique o serviço solicitado e seu contrato real: operações,
-  payloads, autenticação, erros e configuração de ambiente.
-- Não invente endpoints ou escolha um fornecedor sem fundamento
-  no escopo. Se o contrato indispensável estiver ausente, peça-o.
-- Separe claramente comportamento existente e solução proposta.
-
-## Estratégia
-
-- Isole acesso remoto e transformação de dados em uma camada pequena
-  e tipada, criada conforme a necessidade da integração.
-- Atualize os consumidores de setAppointments ao tornar mutações
-  assíncronas; não altere apenas a carga inicial dos dados.
-- Preserve a separação entre rascunho local e reserva persistida.
-- Prefira fetch nativo quando suficiente. Não introduza Axios,
-  cache de consultas ou outro SDK sem necessidade concreta.
-- Trate respostas externas como dados não validados; verifique
-  status HTTP e estrutura dos payloads consumidos.
-- Represente carregamento, vazio, erro e sucesso na interface.
-- Só apresente confirmação definitiva após sucesso do servidor.
-  Preserve o rascunho em falhas e trate conflito de horário com
-  atualização da disponibilidade.
-- Evite submissões duplicadas; defina idempotência no servidor
-  quando o contrato permitir repetição segura de reservas.
-
-## Contrato de domínio e segurança
-
-- O servidor deve validar serviços, profissional, dados do cliente,
-  preço, duração, expediente e sobreposição.
-- A validação de disponibilidade e a criação da reserva precisam
-  ser atômicas para impedir conflitos entre usuários.
-- Defina explicitamente o fuso da barbearia e a representação de
-  datas e horários no contrato; hoje o frontend usa datas locais.
-- Para "sem preferência", a atribuição de profissional deve fazer
-  parte da operação de reserva no servidor.
-- Defina como preço e duração históricos serão preservados;
-  atualmente o painel os calcula pelo catálogo em memória.
-- Substitua o gate demonstrativo por autenticação e autorização
-  no servidor quando houver dados reais.
-- Mantenha segredos no servidor; não exponha credenciais em
-  NEXT_PUBLIC_* nem as grave no repositório.
-- Não registre senhas ou dados pessoais desnecessários em logs.
-- Não use mocks como fallback silencioso de falhas de produção.
-
-## Verificação
-
-Teste o contrato e a adaptação dos dados, sucesso, erro de rede,
-resposta inválida, conflito de horário e acesso não autorizado,
-conforme as operações implementadas.
-
-Use mocks de rede nos testes automatizados e descreva separadamente
-o que foi validado contra um serviço real. Atualize o README com
-configuração e limitações da integração entregue.
+FastAPI e SQLite persistem catálogo, reservas e sessões. src/lib/api.ts contém tipos,
+cliente HTTP e validadores. O contexto mantém sessão consultada e fluxo da reserva;
+o painel busca a agenda autenticada. Não há pagamento nem mensageria.
+Leia README.md, consumidores e contratos em backend/app antes de mudar a integração.
+Use fetch nativo e valide respostas; não use mocks como fallback de produção.
+Preserve estados de carregamento, erro, vazio e sucesso; só confirme após resposta da API.
+Erros mantêm detail textual e podem trazer code e fields (campo para mensagem, sem dados
+recebidos). Encaminhe erros conhecidos à etapa correta e preserve desconhecidos na atual.
+Preserve Idempotency-Key para repetir o mesmo payload após falha. Payload alterado gera
+nova chave. Mantenha bloqueio de envio simultâneo e tentativa no contexto durante navegação.
+Preserve BEGIN IMMEDIATE na criação e reativação, snapshots em centavos e duração,
+atribuição atômica de any e disponibilidade pública sem dados pessoais.
+Datas usam YYYY-MM-DD, horários HH:mm e America/Sao_Paulo.
+Autenticação da equipe é validada no servidor por cookie HttpOnly; preserve origem permitida
+nas mutações e tratamento de 401. Não exponha segredos ou dados pessoais em logs.
+Consultas da agenda carregam itens em lote; disponibilidade carrega intervalos uma vez.
+Mudanças nessas consultas devem preservar concorrência e isolamento transacional.
+Use bancos temporários nos testes; não altere banco operacional para validar mudanças.
+Teste contratos, falhas, idempotência, concorrência, privacidade e autenticação.
+Atualize README.md quando contratos, comandos ou limitações mudarem.

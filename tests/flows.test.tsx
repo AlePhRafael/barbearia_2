@@ -19,7 +19,7 @@ import {
   slots,
 } from "../src/data/mock";
 import { Appointment, parseAppointment, parseCatalog } from "../src/lib/api";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 vi.mock("next/image", () => ({ default: () => null }));
@@ -86,6 +86,7 @@ const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
             status === 409
               ? "Este horário não está mais disponível. Escolha outro."
               : "Servidor indisponível. Tente novamente.",
+          code: status === 409 ? "slot_unavailable" : undefined,
         },
         status,
       );
@@ -263,13 +264,9 @@ describe("Painel da equipe", () => {
   });
 });
 
-async function fillBooking() {
+async function fillBooking(content: ReactNode = <Booking />) {
   const user = userEvent.setup();
-  render(
-    <AppProvider>
-      <Booking />
-    </AppProvider>,
-  );
+  render(<AppProvider>{content}</AppProvider>);
   await user.click(
     await screen.findByRole("button", { name: /Corte de cabelo/ }),
   );
@@ -294,6 +291,212 @@ async function fillBooking() {
   await user.click(screen.getByRole("button", { name: /Continuar/ }));
   return user;
 }
+
+function NavigationHarness() {
+  const [visible, setVisible] = useState(true);
+  return (
+    <>
+      <button onClick={() => setVisible((value) => !value)}>
+        Alternar página
+      </button>
+      {visible ? <Booking /> : <p>Outra página</p>}
+    </>
+  );
+}
+
+describe("Continuidade e acessibilidade", () => {
+  it("preserva envio, confirmação e dados da API ao navegar", async () => {
+    const user = await fillBooking(<NavigationHarness />);
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Confirmar agendamento/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Alternar página" }));
+    window.history.replaceState({}, "", "/agendar?servico=combo");
+    await user.click(screen.getByRole("button", { name: "Alternar página" }));
+    expect(
+      (screen.getByRole("button", { name: /Confirmando/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    finish(
+      reply(
+        makeAppointment({
+          ...initialAppointments()[0],
+          id: "VT-ABC123",
+          name: "Nome normalizado",
+          phone: "11999999999",
+        }),
+        201,
+      ),
+    );
+    await screen.findByText("VT-ABC123");
+    expect(screen.getByText("Nome normalizado")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Alternar página" }));
+    await user.click(screen.getByRole("button", { name: "Alternar página" }));
+    expect(screen.getByText("VT-ABC123")).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.filter(
+        ([path, init]) =>
+          path === "/api/appointments" && init?.method === "POST",
+      ),
+    ).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: /Novo agendamento/ }));
+    expect(screen.queryByText("VT-ABC123")).toBeNull();
+    expect(document.querySelector(".summary-total")?.textContent).toContain(
+      "0,00",
+    );
+  });
+
+  it("reutiliza a chave após erro de rede e remontagem", async () => {
+    const user = await fillBooking(<NavigationHarness />);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await user.click(
+      screen.getByRole("button", { name: /Confirmar agendamento/ }),
+    );
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "Alternar página" }));
+    await user.click(screen.getByRole("button", { name: "Alternar página" }));
+    await user.click(
+      screen.getByRole("button", { name: /Confirmar agendamento/ }),
+    );
+    await screen.findByText("VT-ABC123");
+    const calls = fetchMock.mock.calls.filter(
+      ([path, init]) => path === "/api/appointments" && init?.method === "POST",
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1]?.headers).toEqual(calls[1][1]?.headers);
+  });
+
+  it("encaminha erro de campo, preserva horário e troca chave após correção", async () => {
+    const user = await fillBooking();
+    fetchMock.mockImplementationOnce(async () =>
+      reply(
+        {
+          detail: "Confira os campos.",
+          code: "validation_error",
+          fields: { name: "Confira o nome." },
+        },
+        422,
+      ),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Confirmar agendamento/ }),
+    );
+    const name = await screen.findByLabelText(/Nome completo/);
+    expect(document.activeElement).toBe(name);
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("maxlength")).toBe("200");
+    expect(screen.getByLabelText(/Celular/).getAttribute("maxlength")).toBe(
+      "30",
+    );
+    expect(
+      screen.getByLabelText(/Alguma observação/).getAttribute("maxlength"),
+    ).toBe("500");
+    expect((screen.getByLabelText(/Celular/) as HTMLInputElement).value).toBe(
+      "11987654321",
+    );
+    await user.clear(name);
+    await user.type(name, "Outro Cliente");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(screen.getByText(/às 09:00/)).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: /Confirmar agendamento/ }),
+    );
+    await screen.findByText("VT-ABC123");
+    const calls = fetchMock.mock.calls.filter(
+      ([path, init]) => path === "/api/appointments" && init?.method === "POST",
+    );
+    expect(calls[0][1]?.headers).not.toEqual(calls[1][1]?.headers);
+  });
+
+  it.each([
+    ["invalid_services", "Qual vai ser o ritual?"],
+    ["invalid_barber", "Quem cuida do seu estilo?"],
+    ["invalid_schedule", "Um tempo só pra você."],
+    ["unknown", "Tudo pronto para agendar?"],
+    ["idempotency_conflict", "Tudo pronto para agendar?"],
+  ])("encaminha %s sem depender do texto", async (code, title) => {
+    const user = await fillBooking();
+    fetchMock.mockImplementationOnce(async () =>
+      reply({ detail: "Erro de teste", code }, 422),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Confirmar agendamento/ }),
+    );
+    expect(await screen.findByRole("heading", { name: title })).toBeTruthy();
+  });
+
+  it("anuncia seleções e move foco entre etapas", async () => {
+    const user = await fillBooking();
+    await user.click(screen.getByRole("button", { name: /Data e horário/ }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Um tempo só pra você." }),
+    );
+    const selectedDate = document.querySelector(
+      '.calendar-grid button[aria-pressed="true"]',
+    );
+    expect(selectedDate?.getAttribute("aria-label")).toMatch(
+      /de fevereiro de 2030/,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "09:00" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await user.click(screen.getByRole("button", { name: /Profissional/ }));
+    expect(
+      screen
+        .getByRole("button", { name: /Sem preferência/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("mostra detalhes e permite navegar pelas abas com teclado", async () => {
+    authenticated = true;
+    saved[0].note = "Preferência de corte\nSegunda linha";
+    const user = userEvent.setup();
+    render(
+      <AppProvider>
+        <Dashboard />
+      </AppProvider>,
+    );
+    await screen.findByLabelText(`Status de ${saved[0].name}`);
+    const summary = screen.getByText(
+      `Detalhes do atendimento de ${saved[0].name}`,
+    );
+    await user.click(summary);
+    expect(summary.closest("details")?.open).toBe(true);
+    expect(
+      within(summary.closest("details")!).getByText(saved[0].id),
+    ).toBeTruthy();
+    expect(
+      within(summary.closest("details")!).getByText(/Preferência de corte/),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Sem observações").length).toBeGreaterThan(0);
+    screen.getByRole("tab", { name: "Agenda" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(
+      screen.getByRole("tab", { name: "Clientes" }),
+    );
+    expect(screen.getByRole("tabpanel", { name: "Clientes" })).toBeTruthy();
+    await user.keyboard("{End}");
+    expect(
+      screen
+        .getByRole("tab", { name: "Faturamento" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    await user.keyboard("{Home}{ArrowLeft}");
+    expect(document.activeElement).toBe(
+      screen.getByRole("tab", { name: "Faturamento" }),
+    );
+  });
+});
 describe("Falhas e contratos da API", () => {
   it("bloqueia nova confirmação enquanto a resposta está pendente", async () => {
     const user = await fillBooking();

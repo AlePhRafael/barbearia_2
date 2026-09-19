@@ -2187,3 +2187,32 @@ td a {
     animation: none !important;
   }
 }
+
+.appointment {
+  flex-wrap: wrap;
+}
+.appointment-details {
+  flex-basis: 100%;
+  min-width: 0;
+}
+.appointment-details summary {
+  cursor: pointer;
+  color: var(--gold);
+}
+.appointment-details dl {
+  margin-top: 12px;
+}
+.appointment-details dt {
+  color: var(--muted);
+}
+.appointment-details dd {
+  margin: 4px 0 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+summary:focus-visible,
+[role="tabpanel"]:focus-visible,
+.booking-main h1:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 5px;
+}
