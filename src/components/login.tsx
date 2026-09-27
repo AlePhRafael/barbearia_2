@@ -17,7 +17,7 @@ export default function Login() {
   }, [ready, session, router]);
   return (
     <main className="login-page">
-      <div className="login-card panel">
+      <div className="login-card panel" data-reveal>
         <span className="login-icon">
           <LockKeyhole size={25} />
         </span>

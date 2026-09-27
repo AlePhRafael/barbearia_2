@@ -7,6 +7,9 @@ import {
   ArrowRight,
   Check,
   Scissors,
+  Flame,
+  Sparkles,
+  Eye,
   Clock,
   CalendarDays,
   User,
@@ -33,6 +36,16 @@ const steps = [
   "Seus dados",
   "Confirmação",
 ];
+const serviceIcons: Record<string, typeof Scissors> = {
+  scissors: Scissors,
+  razor: Flame,
+  sparkles: Sparkles,
+  eye: Eye,
+};
+function ServiceGlyph({ icon }: { icon: string }) {
+  const Icon = serviceIcons[icon] || Scissors;
+  return <Icon size={22} strokeWidth={1.6} />;
+}
 export default function Booking() {
   const {
     booking,
@@ -149,6 +162,9 @@ export default function Booking() {
   return (
     <main className="booking-page">
       <div className="progress-bar">
+        <p className="container step-status" role="status">
+          Etapa {step + 1} de {steps.length} <span>·</span> {steps[step]}
+        </p>
         <div className="container steps">
           {steps.map((label, i) => (
             <button
@@ -167,7 +183,7 @@ export default function Booking() {
         </div>
       </div>
       <div className="container booking-layout">
-        <section className="booking-main">
+        <section className="booking-main" data-reveal>
           <Link href="/" className="back-link">
             <ArrowLeft size={15} /> Voltar para início
           </Link>
@@ -200,9 +216,32 @@ export default function Booking() {
           </p>
           {step === 0 && (
             <div className="booking-services">
-              {catalogLoading && <p role="status">Carregando serviços…</p>}
+              {catalogLoading && (
+                <div
+                  className="service-skeletons"
+                  role="status"
+                  aria-label="Carregando serviços"
+                >
+                  <span className="sr-only">Carregando serviços…</span>
+                  {Array.from({ length: 3 }, (_, index) => (
+                    <div
+                      className="select-card skeleton-card"
+                      key={index}
+                      aria-hidden
+                    >
+                      <span className="skeleton-block skeleton-icon" />
+                      <span className="skeleton-copy">
+                        <span className="skeleton-block skeleton-title" />
+                        <span className="skeleton-block skeleton-line" />
+                        <span className="skeleton-block skeleton-meta" />
+                      </span>
+                      <span className="skeleton-block skeleton-price" />
+                    </div>
+                  ))}
+                </div>
+              )}
               {catalogError && (
-                <div role="alert">
+                <div className="catalog-message panel" role="alert">
                   <p>{catalogError}</p>
                   <button
                     className="button outline"
@@ -213,32 +252,35 @@ export default function Booking() {
                 </div>
               )}
               {!catalogLoading && !catalogError && !services.length && (
-                <p>Nenhum serviço disponível.</p>
+                <p className="catalog-message panel">
+                  Nenhum serviço disponível.
+                </p>
               )}
-              {services.map((s) => (
-                <button
-                  aria-pressed={booking.services.includes(s.id)}
-                  key={s.id}
-                  onClick={() => toggle(s.id)}
-                  className={`select-card ${booking.services.includes(s.id) ? "selected" : ""}`}
-                >
-                  <span className="service-icon">
-                    <Scissors size={22} />
-                  </span>
-                  <div>
-                    <h3>{s.name}</h3>
-                    <p>{s.description}</p>
-                    <span className="muted inline-flex items-center gap-2">
-                      <Clock size={13} />
-                      {s.duration} min
+              {!catalogLoading &&
+                services.map((s) => (
+                  <button
+                    aria-pressed={booking.services.includes(s.id)}
+                    key={s.id}
+                    onClick={() => toggle(s.id)}
+                    className={`select-card ${booking.services.includes(s.id) ? "selected" : ""}`}
+                  >
+                    <span className="service-icon">
+                      <ServiceGlyph icon={s.icon} />
                     </span>
-                  </div>
-                  <strong>{money(s.price)}</strong>
-                  <span className="selection-box">
-                    {booking.services.includes(s.id) && <Check size={14} />}
-                  </span>
-                </button>
-              ))}
+                    <div>
+                      <h3>{s.name}</h3>
+                      <p>{s.description}</p>
+                      <span className="muted inline-flex items-center gap-2">
+                        <Clock size={13} />
+                        {s.duration} min
+                      </span>
+                    </div>
+                    <strong>{money(s.price)}</strong>
+                    <span className="selection-box">
+                      {booking.services.includes(s.id) && <Check size={14} />}
+                    </span>
+                  </button>
+                ))}
             </div>
           )}
           {step === 1 && (
@@ -596,7 +638,7 @@ export default function Booking() {
             )}
           </div>
         </section>
-        <aside className="booking-summary panel">
+        <aside className="booking-summary panel" data-reveal>
           <span className="eyebrow">CUIDADO EM CADA DETALHE</span>
           <h3>Seu agendamento</h3>
           <div className="summary-services">

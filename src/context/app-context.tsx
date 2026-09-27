@@ -51,22 +51,21 @@ function useAppState() {
   const [ready, setReady] = useState(false);
   const [sessionError, setSessionError] = useState("");
   const sessionRevision = useRef(0);
-  const loadCatalog = useCallback(
-    (signal?: AbortSignal) =>
-      request("/api/catalog", parseCatalog, { signal })
-        .then((data) => {
-          if (signal?.aborted) return;
-          setCatalog(data);
-          setCatalogError("");
-        })
-        .catch((error) => {
-          if (!signal?.aborted) setCatalogError(message(error));
-        })
-        .finally(() => {
-          if (!signal?.aborted) setCatalogLoading(false);
-        }),
-    [],
-  );
+  const loadCatalog = useCallback((signal?: AbortSignal) => {
+    setCatalogLoading(true);
+    return request("/api/catalog", parseCatalog, { signal })
+      .then((data) => {
+        if (signal?.aborted) return;
+        setCatalog(data);
+        setCatalogError("");
+      })
+      .catch((error) => {
+        if (!signal?.aborted) setCatalogError(message(error));
+      })
+      .finally(() => {
+        if (!signal?.aborted) setCatalogLoading(false);
+      });
+  }, []);
   const checkSession = useCallback((signal?: AbortSignal) => {
     const revision = ++sessionRevision.current;
     const current = () =>

@@ -122,6 +122,45 @@ button {
 .gold {
   color: var(--gold);
 }
+.reveal-ready [data-reveal] {
+  --reveal-x: 0px;
+  --reveal-y: 28px;
+  opacity: 0;
+  filter: blur(4px);
+  transform: translate3d(var(--reveal-x), var(--reveal-y), 0) scale(0.985);
+  transition:
+    opacity 0.65s ease,
+    filter 0.65s ease,
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-ready[data-scroll-direction="up"] [data-reveal] {
+  --reveal-y: -28px;
+}
+.reveal-ready [data-reveal="left"] {
+  --reveal-x: -32px;
+  --reveal-y: 0px;
+}
+.reveal-ready [data-reveal="right"] {
+  --reveal-x: 32px;
+  --reveal-y: 0px;
+}
+.reveal-ready [data-reveal].is-visible {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0, 0, 0) scale(1);
+}
+.reveal-ready [data-reveal].reveal-delay-1.is-visible {
+  transition-delay: 70ms;
+}
+.reveal-ready [data-reveal].reveal-delay-2.is-visible {
+  transition-delay: 140ms;
+}
+.reveal-ready [data-reveal].reveal-delay-3.is-visible {
+  transition-delay: 210ms;
+}
+.reveal-ready [data-reveal].reveal-delay-4.is-visible {
+  transition-delay: 280ms;
+}
 .header {
   height: 91px;
   border-bottom: 1px solid var(--border);
@@ -169,7 +208,7 @@ button {
   gap: 30px;
   align-items: center;
   height: 100%;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .nav a {
@@ -200,8 +239,11 @@ button {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
+}
+.mobile-staff-link {
+  display: none !important;
 }
 .button {
   background: var(--gold);
@@ -223,6 +265,11 @@ button {
   border-color: var(--gold-bright);
   transform: translateY(-1px);
 }
+.button:disabled {
+  opacity: 0.48;
+  box-shadow: none;
+  transform: none;
+}
 .button.small {
   padding: 10px 16px;
   font-size: 11px;
@@ -242,7 +289,10 @@ button {
   display: none;
   background: none;
   border: 0;
-  padding: 5px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
 }
 .hero {
   height: 590px;
@@ -273,7 +323,7 @@ button {
 .eyebrow {
   font-family: Arial, sans-serif;
   display: block;
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 2.4px;
   font-weight: 600;
   color: var(--gold);
@@ -283,7 +333,7 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 9px;
+  font-size: 10px;
 }
 .hero .eyebrow > span {
   height: 5px;
@@ -343,13 +393,13 @@ button {
 .stars strong {
   color: var(--text);
   letter-spacing: 0;
-  font-size: 10px;
+  font-size: 11px;
   margin-left: 5px;
 }
 .social-proof small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 1px;
 }
 .hero-caption {
@@ -368,17 +418,6 @@ button {
   width: 35px;
   background: var(--gold);
 }
-.hero-number {
-  position: absolute;
-  right: 50px;
-  top: 35px;
-  font-size: 11px;
-  color: var(--gold);
-}
-.hero-number span {
-  color: var(--muted);
-  margin-left: 7px;
-}
 .benefit-strip {
   border-block: 1px solid var(--border);
   background: #151613;
@@ -394,7 +433,7 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 10px;
+  font-size: 11px;
   color: #bcbbb2;
 }
 .benefits svg {
@@ -421,14 +460,14 @@ button {
 }
 .section-heading p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 12px;
 }
 .text-link {
   display: flex;
   align-items: center;
   gap: 13px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--gold);
   padding-bottom: 4px;
 }
@@ -439,6 +478,15 @@ button {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 17px;
+}
+.catalog-state {
+  grid-column: 1 / -1;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
 }
 .service-card {
   border: 1px solid var(--border);
@@ -486,7 +534,7 @@ button {
   font-size: 15px;
 }
 .service-card > p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.85;
   margin-top: 9px;
@@ -504,7 +552,7 @@ button {
   gap: 5px;
   align-items: center;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .service-meta strong {
   font-size: 18px;
@@ -517,7 +565,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 11px;
   color: #c7c7be;
 }
 .service-cta svg {
@@ -537,29 +585,56 @@ button {
   gap: 24px;
 }
 .portrait {
-  height: 320px;
+  aspect-ratio: 2 / 3;
+  height: auto;
   position: relative;
   overflow: hidden;
-  border-radius: 5px;
+  border: 1px solid var(--gold-dark);
+  border-radius: 7px;
+  box-shadow: 0 18px 45px var(--shadow);
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    transform 0.35s ease;
 }
 .portrait img {
   object-fit: cover;
-  object-position: 50% 30%;
-  filter: saturate(0.7);
-  transition: transform 0.6s;
+  object-position: center;
+  filter: saturate(0.78) contrast(1.02);
+  transition: filter 0.45s ease;
 }
-.team-card:hover img {
-  transform: scale(1.035);
+.team-card:hover .portrait,
+.team-card:focus-visible .portrait {
+  border-color: var(--gold);
+  box-shadow:
+    0 0 0 1px var(--gold-tint),
+    0 18px 50px var(--gold-glow);
+  transform: translateY(-4px);
+}
+.team-card:hover .portrait img,
+.team-card:focus-visible .portrait img {
+  filter: saturate(0.95) contrast(1.04);
+}
+.portrait:before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 10px;
+  border: 1px solid #c4a66a70;
+  border-radius: 3px;
+  pointer-events: none;
 }
 .portrait:after {
   content: "";
   position: absolute;
+  z-index: 1;
   inset: 50% 0 0;
   background: linear-gradient(var(--transparent), #10111099);
+  pointer-events: none;
 }
 .portrait-number {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   top: 15px;
   left: 18px;
   color: var(--gold);
@@ -568,7 +643,7 @@ button {
 }
 .portrait-arrow {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   bottom: 18px;
   right: 18px;
   border: 1px solid #ffffff30;
@@ -589,13 +664,13 @@ button {
   font-size: 17px;
 }
 .team-info p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
 }
 .team-info > span {
   color: var(--gold);
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -621,7 +696,7 @@ button {
 }
 .space-copy > p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.9;
   margin-top: 20px;
   max-width: 390px;
@@ -631,7 +706,7 @@ button {
   flex-direction: column;
   gap: 10px;
   margin-top: 23px;
-  font-size: 11px;
+  font-size: 12px;
   color: #c0c1b6;
 }
 .space-features span {
@@ -655,7 +730,7 @@ button {
 .address small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 3px;
 }
 .final-cta {
@@ -697,7 +772,7 @@ button {
   height: 38px;
 }
 .footer-main p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .footer-main > a:last-child {
@@ -710,7 +785,7 @@ button {
   align-items: center;
   padding-block: 20px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .footer-bottom > span {
   display: flex;
@@ -728,6 +803,9 @@ button {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
+.step-status {
+  display: none;
+}
 .steps {
   display: flex;
   justify-content: space-between;
@@ -740,7 +818,7 @@ button {
   align-items: center;
   background: none;
   border: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .steps button > span {
@@ -772,7 +850,7 @@ button {
   align-items: start;
 }
 .back-link {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   display: inline-flex;
   gap: 7px;
@@ -786,7 +864,7 @@ button {
   font-size: 39px;
 }
 .page-description {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin-top: 13px;
   margin-bottom: 30px;
@@ -808,18 +886,22 @@ button {
   align-items: center;
   width: 100%;
 }
+.select-card:focus-visible {
+  outline-offset: 3px;
+}
 .select-card:hover {
   border-color: var(--gold-dark);
 }
 .select-card.selected {
   border-color: var(--gold);
   background: var(--gold-tint);
+  box-shadow: inset 3px 0 var(--gold);
 }
 .select-card h3 {
   font-size: 15px;
 }
 .select-card p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin: 4px 0 7px;
 }
@@ -877,11 +959,11 @@ button {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 11px;
+  font-size: 12px;
   margin-bottom: 15px;
 }
 .summary-services small {
-  font-size: 10px;
+  font-size: 11px;
   display: block;
   color: var(--muted);
   margin-top: 5px;
@@ -896,7 +978,7 @@ button {
   gap: 11px;
   align-items: center;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   margin-block: 15px;
 }
 .summary-line svg {
@@ -917,7 +999,7 @@ button {
   font-weight: 500;
 }
 .summary-note {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--muted);
   display: flex;
   gap: 7px;
@@ -973,7 +1055,9 @@ button {
   font-size: 15px;
 }
 .calendar-title button {
-  padding: 7px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -996,7 +1080,7 @@ button {
   background: var(--transparent);
   border: 1px solid var(--transparent);
   border-radius: 4px;
-  min-height: 40px;
+  min-height: 44px;
   font-size: 13px;
 }
 .calendar-grid button:hover:not(:disabled) {
@@ -1022,6 +1106,7 @@ button {
   gap: 9px;
 }
 .time-grid button {
+  min-height: 44px;
   padding: 10px 4px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1143,6 +1228,67 @@ label small {
   padding: 35px 15px;
   color: var(--muted);
   font-size: 12px;
+}
+.service-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.skeleton-card {
+  pointer-events: none;
+  min-height: 111px;
+}
+.skeleton-block {
+  display: block;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--surface-hover) 0%,
+    #2d2e29 50%,
+    var(--surface-hover) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-icon {
+  width: 47px;
+  height: 47px;
+  flex-shrink: 0;
+}
+.skeleton-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+}
+.skeleton-title {
+  width: min(210px, 72%);
+  height: 16px;
+}
+.skeleton-line {
+  width: min(390px, 92%);
+  height: 11px;
+}
+.skeleton-meta {
+  width: 70px;
+  height: 11px;
+}
+.skeleton-price {
+  width: 58px;
+  height: 17px;
+}
+.catalog-message {
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.catalog-message .button {
+  margin-top: 18px;
+}
+@keyframes skeleton-shimmer {
+  to {
+    background-position: -200% 0;
+  }
 }
 /* Team area */
 .login-page {
@@ -1582,9 +1728,6 @@ td a {
   .hero-caption {
     right: calc((100vw - 1200px) / 2);
   }
-  .hero-number {
-    right: calc((100vw - 1200px) / 2);
-  }
 }
 @media (max-width: 1100px) {
   .container {
@@ -1639,9 +1782,6 @@ td a {
     align-items: flex-start;
     flex-direction: column;
   }
-  .portrait {
-    height: 285px;
-  }
   .space-grid {
     gap: 36px;
   }
@@ -1680,7 +1820,7 @@ td a {
     width: 13px;
   }
   .menu-button {
-    display: block;
+    display: grid;
   }
   .menu-button svg {
     width: 21px;
@@ -1702,6 +1842,15 @@ td a {
   .nav.open {
     display: flex;
   }
+  .nav .mobile-staff-link {
+    display: flex !important;
+    width: 100%;
+    height: auto;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    color: var(--gold);
+    gap: 8px;
+  }
   .nav a.active:after {
     bottom: -4px;
   }
@@ -1720,11 +1869,11 @@ td a {
     padding-top: 68px;
   }
   .hero .eyebrow {
-    font-size: 7px;
+    font-size: 9px;
     letter-spacing: 1.6px;
   }
   .hero h1 {
-    font-size: 65px;
+    font-size: clamp(52px, 14vw, 65px);
     letter-spacing: -2px;
     margin-top: 25px;
   }
@@ -1751,11 +1900,6 @@ td a {
     font-size: 6px;
     letter-spacing: 1.6px;
   }
-  .hero-number {
-    right: 20px;
-    top: 20px;
-    font-size: 9px;
-  }
   .benefits {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1763,7 +1907,7 @@ td a {
     gap: 19px 13px;
   }
   .benefits > span {
-    font-size: 8px;
+    font-size: 11px;
     line-height: 1.5;
   }
   .benefits svg {
@@ -1783,7 +1927,7 @@ td a {
     line-height: 1.2;
   }
   .section-heading p {
-    font-size: 11px;
+    font-size: 12px;
   }
   .eyebrow {
     font-size: 8px;
@@ -1802,7 +1946,7 @@ td a {
   }
   .service-card > p {
     min-height: 55px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .service-icon {
     width: 39px;
@@ -1819,11 +1963,11 @@ td a {
     font-size: 14px;
   }
   .service-meta > span {
-    font-size: 8px;
+    font-size: 11px;
     gap: 3px;
   }
   .service-cta {
-    font-size: 9px;
+    font-size: 11px;
   }
   .popular {
     font-size: 6px;
@@ -1835,21 +1979,18 @@ td a {
   .team-grid {
     gap: 17px;
   }
-  .portrait {
-    height: 215px;
-  }
   .team-info h3 {
     font-size: 13px;
   }
   .team-info p {
-    font-size: 9px;
+    font-size: 11px;
   }
   .team-info {
     align-items: flex-start;
     gap: 5px;
   }
   .team-info > span {
-    font-size: 9px;
+    font-size: 11px;
   }
   .team-info svg {
     width: 10px;
@@ -1908,7 +2049,7 @@ td a {
     margin: 0;
   }
   .steps {
-    padding-block: 14px;
+    padding-block: 11px 14px;
     gap: 7px;
   }
   .steps button {
@@ -1919,8 +2060,8 @@ td a {
     flex-direction: column;
   }
   .steps button.current {
-    font-size: 9px;
-    gap: 4px;
+    font-size: 0;
+    gap: 0;
   }
   .steps button > span {
     font-size: 10px;
@@ -1928,7 +2069,20 @@ td a {
     height: 25px;
   }
   .progress-bar {
-    min-height: 72px;
+    min-height: 91px;
+  }
+  .step-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding-top: 12px;
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+  }
+  .step-status span {
+    color: var(--muted);
   }
   .booking-layout {
     grid-template-columns: 1fr;
@@ -1947,7 +2101,7 @@ td a {
     margin-bottom: 25px;
   }
   .page-description {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.7;
   }
   .select-card {
@@ -1958,7 +2112,7 @@ td a {
     font-size: 13px;
   }
   .select-card p {
-    font-size: 10px;
+    font-size: 12px;
   }
   .select-card > strong {
     font-size: 13px;
@@ -1968,7 +2122,7 @@ td a {
     height: 18px;
   }
   .select-card .muted {
-    font-size: 10px;
+    font-size: 11px;
   }
   .time-grid {
     grid-template-columns: repeat(4, 1fr);
@@ -1997,6 +2151,10 @@ td a {
   }
   .booking-summary > h3 {
     margin: 0;
+  }
+  .summary-services > div,
+  .summary-line {
+    font-size: 12px;
   }
   .confirmation {
     padding: 20px;
@@ -2147,12 +2305,68 @@ td a {
   }
 }
 @media (max-width: 480px) {
+  .container {
+    width: calc(100% - 32px);
+  }
+  .header-inner {
+    gap: 7px;
+  }
+  .brand {
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+  .brand-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .brand-icon svg {
+    width: 21px;
+  }
+  .brand small {
+    margin-top: 5px;
+    letter-spacing: 3px;
+  }
+  .header-actions {
+    gap: 5px;
+  }
+  .header .button {
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+  .header-cta-detail,
+  .header .button svg {
+    display: none;
+  }
+  .hero {
+    height: 660px;
+  }
+  .hero-content {
+    padding-top: 54px;
+  }
+  .hero h1 {
+    font-size: clamp(48px, 14vw, 56px);
+  }
+  .hero h1 em {
+    display: block;
+  }
+  .hero-caption {
+    max-width: calc(100% - 40px);
+    text-align: right;
+  }
+  .service-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .service-card h3,
+  .service-card > p {
+    min-height: 0;
+  }
+  .service-card > p {
+    margin-bottom: 6px;
+  }
   .team-grid {
     grid-template-columns: 1fr;
     gap: 27px;
-  }
-  .portrait {
-    height: 355px;
   }
   .team-info h3 {
     font-size: 17px;
@@ -2169,11 +2383,23 @@ td a {
   .team-info {
     padding-top: 13px;
   }
-  .hero h1 {
-    font-size: 59px;
+  .select-card {
+    align-items: flex-start;
   }
-  .hero {
-    height: 600px;
+  .select-card > strong {
+    margin-left: auto;
+  }
+  .select-card .selection-box {
+    margin-top: 1px;
+  }
+  .skeleton-price {
+    display: none;
+  }
+  .booking-summary {
+    padding: 20px;
+  }
+  .summary-total strong {
+    font-size: 23px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2185,6 +2411,11 @@ td a {
   *:after {
     transition: none !important;
     animation: none !important;
+  }
+  .reveal-ready [data-reveal] {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
   }
 }
 

@@ -96,11 +96,8 @@ export default async function Home() {
         <div className="hero-caption">
           <span className="tiny-line" /> O SEU TEMPO MERECE ESSE CUIDADO.
         </div>
-        <span className="hero-number">
-          01 <span>/ 03</span>
-        </span>
       </section>
-      <div className="benefit-strip">
+      <div className="benefit-strip" data-reveal>
         <div className="container benefits">
           <span>
             <Scissors /> Profissionais que entendem de estilo
@@ -117,7 +114,7 @@ export default async function Home() {
         </div>
       </div>
       <section id="servicos" className="section container">
-        <div className="section-heading">
+        <div className="section-heading" data-reveal>
           <div>
             <span className="eyebrow">FEITO PRA VOCÊ</span>
             <h2>O cuidado que você merece.</h2>
@@ -129,13 +126,13 @@ export default async function Home() {
         </div>
         <div className="service-grid">
           {catalogError && (
-            <p role="alert">
+            <p className="catalog-state" role="alert">
               Não foi possível carregar os serviços. Verifique se o sistema está
               iniciado e recarregue a página.
             </p>
           )}
           {!catalogError && !services.length && (
-            <p>Nenhum serviço disponível.</p>
+            <p className="catalog-state">Nenhum serviço disponível.</p>
           )}
           {services.map((s, i) => {
             const Icon = icons[i] || Scissors;
@@ -143,7 +140,8 @@ export default async function Home() {
               <Link
                 href={`/agendar?servico=${s.id}`}
                 key={s.id}
-                className={`service-card ${i === 2 ? "featured" : ""}`}
+                className={`service-card reveal-delay-${i + 1} ${i === 2 ? "featured" : ""}`}
+                data-reveal
               >
                 {i === 2 && <span className="popular">MAIS PEDIDO</span>}
                 <div className="service-icon">
@@ -167,7 +165,7 @@ export default async function Home() {
       </section>
       <section id="equipe" className="section team-section">
         <div className="container">
-          <div className="section-heading">
+          <div className="section-heading" data-reveal>
             <div>
               <span className="eyebrow">TALENTO QUE FAZ A DIFERENÇA</span>
               <h2>Boas mãos. Grandes estilos.</h2>
@@ -179,7 +177,12 @@ export default async function Home() {
           </div>
           <div className="team-grid">
             {barbers.map((b, i) => (
-              <Link href="/agendar" className="team-card" key={b.id}>
+              <Link
+                href="/agendar"
+                className={`team-card reveal-delay-${i + 1}`}
+                key={b.id}
+                data-reveal
+              >
                 <div className="portrait">
                   <Image
                     src={b.image}
@@ -207,7 +210,7 @@ export default async function Home() {
         </div>
       </section>
       <section id="espaco" className="section container space-grid">
-        <div className="space-photo">
+        <div className="space-photo" data-reveal="left">
           <Image
             src={hero}
             alt="Interior da barbearia com decoração de madeira e iluminação quente"
@@ -215,7 +218,7 @@ export default async function Home() {
             sizes="(max-width: 700px) 100vw, 50vw"
           />
         </div>
-        <div className="space-copy">
+        <div className="space-copy" data-reveal="right">
           <span className="eyebrow">SINTA-SE EM CASA</span>
           <h2>
             Uma pausa na rotina.
@@ -246,7 +249,7 @@ export default async function Home() {
           </div>
         </div>
       </section>
-      <section className="container final-cta">
+      <section className="container final-cta" data-reveal>
         <div>
           <span className="eyebrow">SEU PRÓXIMO BOM MOMENTO</span>
           <h2>A sua melhor versão tem hora marcada.</h2>

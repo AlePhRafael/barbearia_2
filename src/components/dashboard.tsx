@@ -142,7 +142,7 @@ export default function Dashboard() {
   const change = previous ? ((revenue - previous) / previous) * 100 : null;
   return (
     <main className="dashboard container">
-      <div className="dashboard-heading">
+      <div className="dashboard-heading" data-reveal>
         <div>
           <span className="eyebrow">ÁREA DA EQUIPE</span>
           <h1>Um bom dia começa aqui.</h1>
@@ -187,7 +187,7 @@ export default function Dashboard() {
           </button>
         </div>
       )}
-      <div className="dashboard-toolbar">
+      <div className="dashboard-toolbar" data-reveal>
         <button
           className="button outline small"
           disabled={!!pending || loadedKey !== agendaKey}
@@ -292,8 +292,12 @@ export default function Dashboard() {
               "Por atendimento concluído",
             ],
           ] as const
-        ).map(([Icon, label, num, note]) => (
-          <div className="stat-card panel" key={label as string}>
+        ).map(([Icon, label, num, note], index) => (
+          <div
+            className={`stat-card panel reveal-delay-${index + 1}`}
+            key={label as string}
+            data-reveal
+          >
             <span>
               {label as string}
               <Icon size={18} />
@@ -310,6 +314,7 @@ export default function Dashboard() {
         tabIndex={0}
         className="panel dashboard-content"
         hidden={loadFailed || loadedKey !== agendaKey}
+        data-reveal
       >
         <div className="content-heading">
           <div>

@@ -47,17 +47,27 @@ export function Header() {
           <Link onClick={() => setOpen(false)} href="/#espaco">
             O espaço
           </Link>
+          <Link
+            className="mobile-staff-link"
+            onClick={() => setOpen(false)}
+            href="/login"
+          >
+            Área da equipe <ArrowUpRight size={14} />
+          </Link>
         </nav>
         <div className="header-actions">
           <Link className="staff-link" href="/login">
             Área da equipe <ArrowUpRight size={14} />
           </Link>
           <Link className="button small" href="/agendar">
-            Agendar horário <ArrowUpRight size={15} />
+            <span>
+              Agendar<span className="header-cta-detail"> horário</span>
+            </span>
+            <ArrowUpRight size={15} />
           </Link>
           <button
             className="menu-button"
-            aria-label="Abrir menu"
+            aria-label={open ? "Fechar menu" : "Abrir menu"}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
           >
@@ -79,9 +89,7 @@ export function Footer() {
         </a>
       </div>
       <div className="container footer-bottom">
-        <span>
-          © {new Date().getFullYear()} Vértice Barbearia
-        </span>
+        <span>© {new Date().getFullYear()} Vértice Barbearia</span>
         <span>
           <MapPin size={13} /> São Paulo, SP
         </span>
