@@ -510,6 +510,25 @@ $env:BARBEARIA_DB_PATH = 'C:\pasta-local\barbearia.sqlite3'
 
 Use o mesmo ambiente nos comandos de migração, backup e servidor.
 
+### Deploy isolado do FastAPI na Vercel
+
+Crie um projeto separado na Vercel com **Root Directory** definido como `backend`. O runtime
+reconhece `app/main.py` automaticamente e instala as dependências de produção a partir de
+`requirements.txt`; mantenha Build Command, Install Command e Output Directory sem sobrescritas.
+
+Configure no projeto do backend:
+
+```text
+BARBEARIA_ORIGINS=https://barbearia2-nine.vercel.app
+BARBEARIA_COOKIE_SECURE=true
+```
+
+Depois do deploy, configure `API_INTERNAL_URL` no projeto do frontend com a URL HTTPS pública do
+backend. Essa configuração corrige o empacotamento e a inicialização da aplicação, mas não torna o
+SQLite persistente: Vercel Functions oferecem somente `/tmp` como área gravável, e seu conteúdo é
+efêmero. As rotas que consultam ou alteram catálogo, reservas, usuários e sessões exigem uma etapa
+posterior de persistência compatível com serverless ou uma hospedagem com disco persistente.
+
 ## Testes e qualidade
 
 Frontend, a partir da raiz:

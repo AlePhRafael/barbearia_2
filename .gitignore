@@ -15,4 +15,5 @@ htmlcov/
 *.sqlite3-*
 *.db
 .local-run/
+.vercel/
 !.env.example
