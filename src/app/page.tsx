@@ -44,6 +44,7 @@ export default async function Home() {
           alt="Poltrona de couro e espelhos no ambiente acolhedor da Vértice"
           fill
           priority
+          placeholder="blur"
           sizes="100vw"
           className="hero-image"
         />
@@ -188,6 +189,7 @@ export default async function Home() {
                     src={b.image}
                     alt={b.name}
                     fill
+                    placeholder="blur"
                     sizes="(max-width: 700px) 90vw, 33vw"
                   />
                   <span className="portrait-number">0{i + 1}</span>
@@ -215,6 +217,7 @@ export default async function Home() {
             src={hero}
             alt="Interior da barbearia com decoração de madeira e iluminação quente"
             fill
+            placeholder="blur"
             sizes="(max-width: 700px) 100vw, 50vw"
           />
         </div>

@@ -1,359 +1,69 @@
-import hashlib
-import json
-import os
-import re
-import secrets
-import time
-from datetime import date, datetime
+"""FastAPI application factory and composition root."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
 from zoneinfo import ZoneInfo
 
-from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import delete, insert, select, update
-from sqlalchemy.exc import OperationalError
+from fastapi import FastAPI
+from sqlalchemy.engine import Engine
 
-from .db import appointments, barbers, database_path, items, make_engine, services, sessions, users
+from .config import Settings
+from .db import make_engine
+from .http import install_exception_handlers, install_http_middleware
+from .routers import appointments, auth, catalog, system
+from .security import PASSWORDS as PASSWORDS
 
 ZONE = ZoneInfo("America/Sao_Paulo")
-SLOTS = [f"{9 + i // 2:02}:{'30' if i % 2 else '00'}" for i in range(18)]
-COOKIE = "vertice-session"
-PASSWORDS = PasswordHasher()
-DUMMY_HASH = PASSWORDS.hash(secrets.token_urlsafe(32))
-Status = Literal["confirmado", "em atendimento", "concluído", "cancelado"]
 
 
-class Input(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class BookingInput(Input):
-    services: list[str] = Field(min_length=1, max_length=4)
-    barber: str = Field(min_length=1, max_length=80)
-    date: date
-    time: str = Field(pattern=r"^\d{2}:\d{2}$")
-    name: str = Field(min_length=3, max_length=200)
-    phone: str = Field(max_length=30)
-    note: str = Field(default="", max_length=500)
-
-    @field_validator("name")
-    @classmethod
-    def valid_name(cls, value):
-        value = value.strip()
-        if len(value) < 3:
-            raise ValueError("Informe seu nome completo.")
-        return value
-
-    @field_validator("phone")
-    @classmethod
-    def valid_phone(cls, value):
-        value = re.sub(r"[^0-9]", "", value)
-        if not re.fullmatch(r"[0-9]{10,11}", value):
-            raise ValueError("Informe um telefone válido com DDD.")
-        return value
-
-
-class LoginInput(Input):
-    username: str = Field(min_length=1, max_length=100)
-    password: str = Field(min_length=1, max_length=1024)
-
-
-class StatusInput(Input):
-    status: Status
-
-
-class ServiceOutput(BaseModel):
-    id: str
-    name: str
-    description: str
-    icon: str
-    priceCents: int
-    duration: int
-
-
-class BarberOutput(BaseModel):
-    id: str
-    name: str
-    specialty: str
-    rating: str
-
-
-class CatalogOutput(BaseModel):
-    services: list[ServiceOutput]
-    barbers: list[BarberOutput]
-
-
-class ItemOutput(BaseModel):
-    id: str
-    name: str
-    priceCents: int
-    duration: int
-
-
-class AppointmentOutput(BookingInput):
-    id: str
-    status: Status
-    totalCents: int
-    duration: int
-    items: list[ItemOutput]
-
-
-class AvailabilityOutput(BaseModel):
-    slots: list[str]
-
-
-class UserOutput(BaseModel):
-    username: str
-
-
-class OkOutput(BaseModel):
-    ok: bool
-
-
-def now():
+def now() -> datetime:
     return datetime.now(ZONE)
 
 
-def digest(value):
-    return hashlib.sha256(value.encode()).hexdigest()
+def create_app(
+    path: str | Path | None = None,
+    *,
+    settings: Settings | None = None,
+    engine: Engine | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> FastAPI:
+    """Build an application with replaceable infrastructure for isolated tests."""
+    if settings is not None and path is not None:
+        raise ValueError("Informe path ou settings, não ambos.")
+    resolved_settings = settings or Settings.from_env(path=path)
+    owns_engine = engine is None
+    resolved_engine = engine or make_engine(resolved_settings.database_path)
+    # Keep the default indirect so existing runtime/tests may replace the clock safely.
+    resolved_clock = clock or (lambda: now())
 
-
-class BookingError(HTTPException):
-    def __init__(self, status, detail, code, fields=None):
-        super().__init__(status, detail)
-        self.code = code
-        self.fields = fields or {}
-
-
-def selected_services(connection, ids):
-    if not ids or len(set(ids)) != len(ids) or ("combo" in ids and {"corte", "barba"}.intersection(ids)):
-        raise BookingError(422, "Seleção de serviços inválida.", "invalid_services")
-    rows = connection.execute(select(services).where(services.c.id.in_(ids))).mappings().all()
-    if len(rows) != len(ids):
-        raise BookingError(422, "Serviço desconhecido.", "invalid_services")
-    return rows
-
-
-def candidates(connection, barber):
-    rows = connection.execute(select(barbers).order_by(barbers.c.position)).mappings().all()
-    result = [b["id"] for b in rows if barber == "any" or b["id"] == barber]
-    if not result:
-        raise BookingError(422, "Profissional desconhecido.", "invalid_barber")
-    return result
-
-
-def minute(value):
-    return int(value[:2]) * 60 + int(value[3:])
-
-
-def valid_time(day, slot, duration):
-    current = now()
-    return (slot in SLOTS and day.weekday() != 6 and day >= current.date()
-            and minute(slot) + duration <= 19 * 60
-            and (day > current.date() or minute(slot) > current.hour * 60 + current.minute))
-
-
-def free(connection, day, slot, duration, barber_ids, exclude=None):
-    query = select(appointments.c.barber).where(
-        appointments.c.date == day.isoformat(), appointments.c.status != "cancelado",
-        appointments.c.start_minute < minute(slot) + duration,
-        appointments.c.start_minute + appointments.c.duration > minute(slot))
-    if exclude:
-        query = query.where(appointments.c.id != exclude)
-    occupied = set(connection.execute(query).scalars())
-    return [barber for barber in barber_ids if barber not in occupied]
-
-
-def serialize(connection, row, parts=None):
-    if parts is None:
-        parts = connection.execute(select(items).where(items.c.appointment_id == row["id"])).mappings().all()
-    return {**{key: row[key] for key in ("id", "name", "phone", "note", "barber", "date", "time", "status", "duration")},
-            "totalCents": row["total_cents"], "services": [p["service_id"] for p in parts],
-            "items": [{"id": p["service_id"], "name": p["name"], "priceCents": p["price_cents"], "duration": p["duration"]} for p in parts]}
-
-
-def create_app(path=None):
-    app = FastAPI(title="Vértice Barbearia", version="1.0.0")
-    app.state.engine = make_engine(path or database_path())
-    origins = set(os.environ.get("BARBEARIA_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(","))
-
-    @app.middleware("http")
-    async def origin_check(request: Request, call_next):
-        if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin") not in origins:
-            return JSONResponse(status_code=403, content={"detail": "Origem não autorizada."})
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        return response
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_error(_request, _error):
-        messages = {
-            "name": "Informe um nome entre 3 e 200 caracteres.",
-            "phone": "Informe um telefone com DDD, 10 ou 11 dígitos e até 30 caracteres.",
-            "note": "A observação deve ter até 500 caracteres.",
-            "services": "Confira os serviços selecionados.",
-            "barber": "Confira o profissional selecionado.",
-            "date": "Informe uma data válida.",
-            "time": "Informe um horário válido.",
-        }
-        fields = {str(error["loc"][1]): messages[str(error["loc"][1])]
-                  for error in _error.errors()
-                  if len(error["loc"]) > 1 and error["loc"][0] == "body"
-                  and str(error["loc"][1]) in messages}
-        return JSONResponse(status_code=422, content={
-            "detail": "Confira os campos informados.", "code": "validation_error", "fields": fields})
-
-    @app.exception_handler(BookingError)
-    async def booking_error(_request, error):
-        return JSONResponse(status_code=error.status_code, content={
-            "detail": error.detail, "code": error.code, "fields": error.fields})
-
-    @app.exception_handler(OperationalError)
-    async def database_error(_request, _error):
-        return JSONResponse(status_code=503, content={"detail": "Banco indisponível. Tente novamente em instantes."})
-
-    def connection():
-        with app.state.engine.connect() as conn:
-            yield conn
-
-    def staff(request: Request):
-        token = request.cookies.get(COOKIE, "")
-        with app.state.engine.connect() as conn:
-            user = conn.execute(select(sessions.c.username).where(
-                sessions.c.token_hash == digest(token), sessions.c.expires_at > int(time.time()))).scalar_one_or_none()
-        if not user:
-            raise HTTPException(401, "Entre com sua conta da equipe.")
-        return user
-
-    @app.get("/")
-    def root():
-        return {"status": "ok", "message": "API da barbearia funcionando"}
-
-    @app.get("/favicon.ico", include_in_schema=False)
-    def favicon():
-        return FileResponse(Path(__file__).resolve().parent / "static" / "favicon.ico", media_type="image/x-icon")
-
-    @app.get("/api/health")
-    def health(conn=Depends(connection)):
-        conn.execute(select(services.c.id).limit(1))
-        return {"status": "ok"}
-
-    @app.get("/api/catalog", response_model=CatalogOutput)
-    def catalog(conn=Depends(connection)):
-        service_rows = conn.execute(select(services)).mappings().all()
-        barber_rows = conn.execute(select(barbers).order_by(barbers.c.position)).mappings().all()
-        return {"services": [{"id": s["id"], "name": s["name"], "description": s["description"],
-                "icon": s["icon"], "priceCents": s["price_cents"], "duration": s["duration"]} for s in service_rows],
-                "barbers": [{key: b[key] for key in ("id", "name", "specialty", "rating")} for b in barber_rows]}
-
-    @app.get("/api/availability", response_model=AvailabilityOutput)
-    def availability(date: date, barber: str, services: list[str] = Query(), conn=Depends(connection)):
-        rows = selected_services(conn, services)
-        ids = candidates(conn, barber)
-        duration = sum(s["duration"] for s in rows)
-        occupied = conn.execute(select(appointments.c.barber, appointments.c.start_minute, appointments.c.duration).where(
-            appointments.c.date == date.isoformat(), appointments.c.status != "cancelado",
-            appointments.c.barber.in_(ids))).mappings().all()
-        def available(slot):
-            start = minute(slot)
-            busy = {row["barber"] for row in occupied
-                    if row["start_minute"] < start + duration and row["start_minute"] + row["duration"] > start}
-            return any(barber_id not in busy for barber_id in ids)
-        return {"slots": [s for s in SLOTS if valid_time(date, s, duration) and available(s)]}
-
-    @app.post("/api/appointments", status_code=201, response_model=AppointmentOutput)
-    def create_booking(body: BookingInput, idempotency_key: str = Header(min_length=16, max_length=100)):
-        request_hash = digest(json.dumps(body.model_dump(mode="json"), sort_keys=True))
-        with app.state.engine.connect().execution_options(write_lock=True) as conn, conn.begin():
-            existing = conn.execute(select(appointments).where(appointments.c.idempotency_key == idempotency_key)).mappings().first()
-            if existing:
-                if existing["request_hash"] != request_hash:
-                    raise BookingError(409, "Chave de confirmação já usada para outra reserva.", "idempotency_conflict")
-                return serialize(conn, existing)
-            rows = selected_services(conn, body.services)
-            ids = candidates(conn, body.barber)
-            duration = sum(s["duration"] for s in rows)
-            if not valid_time(body.date, body.time, duration):
-                raise BookingError(422, "Data ou horário fora do expediente ou já encerrado.", "invalid_schedule")
-            available = free(conn, body.date, body.time, duration, ids)
-            if not available:
-                raise BookingError(409, "Este horário não está mais disponível. Escolha outro.", "slot_unavailable")
-            code = "VT-" + secrets.token_hex(3).upper()
-            while conn.execute(select(appointments.c.id).where(appointments.c.id == code)).first():
-                code = "VT-" + secrets.token_hex(3).upper()
-            data = {"id": code, "name": body.name, "phone": body.phone, "note": body.note,
-                    "barber": available[0], "date": body.date.isoformat(), "time": body.time,
-                    "start_minute": minute(body.time), "duration": duration,
-                    "total_cents": sum(s["price_cents"] for s in rows), "status": "confirmado",
-                    "idempotency_key": idempotency_key, "request_hash": request_hash}
-            conn.execute(insert(appointments).values(**data))
-            conn.execute(insert(items), [{"appointment_id": code, "service_id": s["id"],
-                "name": s["name"], "price_cents": s["price_cents"], "duration": s["duration"]} for s in rows])
-            return serialize(conn, data)
-
-    @app.get("/api/appointments", dependencies=[Depends(staff)], response_model=list[AppointmentOutput])
-    def agenda(start: date, end: date, barber: str | None = None, conn=Depends(connection)):
-        if end < start or (end - start).days > 31:
-            raise HTTPException(422, "Consulte um período de até 31 dias.")
-        query = select(appointments).where(appointments.c.date >= start.isoformat(), appointments.c.date <= end.isoformat())
-        if barber:
-            candidates(conn, barber)
-            query = query.where(appointments.c.barber == barber)
-        rows = conn.execute(query.order_by(appointments.c.date, appointments.c.time)).mappings().all()
-        if not rows:
-            return []
-        grouped = {row["id"]: [] for row in rows}
-        parts_query = select(items).where(items.c.appointment_id.in_(query.with_only_columns(appointments.c.id)))
-        for part in conn.execute(parts_query).mappings():
-            grouped[part["appointment_id"]].append(part)
-        return [serialize(conn, row, grouped[row["id"]]) for row in rows]
-
-    @app.patch("/api/appointments/{code}/status", dependencies=[Depends(staff)], response_model=AppointmentOutput)
-    def change_status(code: str, body: StatusInput):
-        with app.state.engine.connect().execution_options(write_lock=True) as conn, conn.begin():
-            row = conn.execute(select(appointments).where(appointments.c.id == code)).mappings().first()
-            if not row:
-                raise HTTPException(404, "Reserva não encontrada.")
-            if row["status"] == "cancelado" and body.status != "cancelado":
-                if not free(conn, date.fromisoformat(row["date"]), row["time"], row["duration"], [row["barber"]], code):
-                    raise HTTPException(409, "Outra reserva ocupa este horário. Não foi possível reativar.")
-            conn.execute(update(appointments).where(appointments.c.id == code).values(status=body.status))
-            return serialize(conn, {**row, "status": body.status})
-
-    @app.post("/api/auth/login", response_model=UserOutput)
-    def login(body: LoginInput, response: Response):
-        with app.state.engine.connect() as conn:
-            password_hash = conn.execute(select(users.c.password_hash).where(users.c.username == body.username)).scalar_one_or_none()
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         try:
-            PASSWORDS.verify(password_hash or DUMMY_HASH, body.password)
-        except VerificationError:
-            raise HTTPException(401, "Usuário ou senha incorretos.") from None
-        if not password_hash:
-            raise HTTPException(401, "Usuário ou senha incorretos.")
-        token = secrets.token_urlsafe(32)
-        with app.state.engine.begin() as conn:
-            conn.execute(delete(sessions).where(sessions.c.expires_at <= int(time.time())))
-            conn.execute(insert(sessions).values(token_hash=digest(token), username=body.username, expires_at=int(time.time()) + 28800))
-        response.set_cookie(COOKIE, token, max_age=28800, httponly=True, samesite="strict", path="/", secure=False)
-        return {"username": body.username}
+            yield
+        finally:
+            if owns_engine:
+                resolved_engine.dispose()
 
-    @app.get("/api/auth/me", response_model=UserOutput)
-    def me(user=Depends(staff)):
-        return {"username": user}
+    application = FastAPI(
+        title="Vértice Barbearia",
+        version="1.0.0",
+        lifespan=lifespan,
+    )
+    application.state.engine = resolved_engine
+    application.state.settings = resolved_settings
+    application.state.clock = resolved_clock
 
-    @app.post("/api/auth/logout", response_model=OkOutput)
-    def logout(request: Request, response: Response):
-        with app.state.engine.begin() as conn:
-            conn.execute(delete(sessions).where(sessions.c.token_hash == digest(request.cookies.get(COOKIE, ""))))
-        response.delete_cookie(COOKIE, path="/")
-        return {"ok": True}
-
-    return app
+    install_http_middleware(application)
+    install_exception_handlers(application)
+    application.include_router(system.router)
+    application.include_router(catalog.router)
+    application.include_router(appointments.router)
+    application.include_router(auth.router)
+    return application
 
 
 app = create_app()

@@ -4,5 +4,3 @@ sqlalchemy
 alembic
 argon2-cffi
 tzdata
-httpx
-pytest

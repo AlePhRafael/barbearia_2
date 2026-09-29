@@ -298,6 +298,7 @@ export default function Booking() {
                       width={90}
                       height={95}
                       alt={b.name}
+                      placeholder="blur"
                     />
                   )}
                   <div>

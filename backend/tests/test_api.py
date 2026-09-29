@@ -1,9 +1,10 @@
+import sqlite3
+import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from threading import Barrier
-import sqlite3
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +26,9 @@ def setup(tmp_path, monkeypatch):
     app = create_app(path)
     seed(app.state.engine)
     with app.state.engine.begin() as conn:
-        conn.execute(insert(users).values(username="equipe", password_hash=PASSWORDS.hash("senha-de-teste")))
+        conn.execute(
+            insert(users).values(username="equipe", password_hash=PASSWORDS.hash("senha-de-teste"))
+        )
     with TestClient(app, headers=ORIGIN) as client:
         yield client, app, path
     app.state.engine.dispose()
@@ -54,16 +57,30 @@ def test_root_and_favicon_without_database(tmp_path, monkeypatch):
 
 
 def payload(**changes):
-    return {"services": ["corte"], "barber": "rafael", "date": "2030-01-07", "time": "09:00",
-            "name": "Cliente Teste", "phone": "(11) 98765-4321", "note": "", **changes}
+    return {
+        "services": ["corte"],
+        "barber": "rafael",
+        "date": "2030-01-07",
+        "time": "09:00",
+        "name": "Cliente Teste",
+        "phone": "(11) 98765-4321",
+        "note": "",
+        **changes,
+    }
 
 
 def book(client, body=None, key=None):
-    return client.post("/api/appointments", json=body or payload(), headers={"Idempotency-Key": key or str(uuid.uuid4())})
+    return client.post(
+        "/api/appointments",
+        json=body or payload(),
+        headers={"Idempotency-Key": key or str(uuid.uuid4())},
+    )
 
 
 def login(client):
-    response = client.post("/api/auth/login", json={"username": "equipe", "password": "senha-de-teste"})
+    response = client.post(
+        "/api/auth/login", json={"username": "equipe", "password": "senha-de-teste"}
+    )
     assert response.status_code == 200
     return response
 
@@ -76,7 +93,11 @@ def test_persistence_history_and_backup(setup, tmp_path):
     assert saved["phone"] == "11987654321"
     assert saved["totalCents"] == 6000 and saved["duration"] == 40
     with app.state.engine.begin() as conn:
-        conn.execute(update(services).where(services.c.id == "corte").values(price_cents=9900, duration=90, name="Novo nome"))
+        conn.execute(
+            update(services)
+            .where(services.c.id == "corte")
+            .values(price_cents=9900, duration=90, name="Novo nome")
+        )
     reopened = create_app(path)
     with TestClient(reopened, headers=ORIGIN) as second:
         login(second)
@@ -87,7 +108,7 @@ def test_persistence_history_and_backup(setup, tmp_path):
     backup(path, dest)
     restored = tmp_path / "restored.sqlite3"
     backup(dest, restored)
-    with sqlite3.connect(restored) as conn:
+    with closing(sqlite3.connect(restored)) as conn:
         assert conn.execute("SELECT total_cents FROM appointments").fetchone() == (6000,)
     with pytest.raises(ValueError):
         backup(dest, path)
@@ -99,18 +120,30 @@ def test_overlap_adjacency_cancel_reactivate(setup):
     assert book(client, payload(time="09:30")).status_code == 201  # adjacent
     assert book(client).status_code == 409
     login(client)
-    assert client.patch(f"/api/appointments/{first['id']}/status", json={"status": "cancelado"}).status_code == 200
+    assert (
+        client.patch(
+            f"/api/appointments/{first['id']}/status", json={"status": "cancelado"}
+        ).status_code
+        == 200
+    )
     assert book(client, payload(services=["barba"])).status_code == 201
-    assert client.patch(f"/api/appointments/{first['id']}/status", json={"status": "confirmado"}).status_code == 409
+    assert (
+        client.patch(
+            f"/api/appointments/{first['id']}/status", json={"status": "confirmado"}
+        ).status_code
+        == 409
+    )
 
 
 def test_concurrent_requests_one_winner(setup):
     _, app, _ = setup
     start = Barrier(2)
+
     def reserve(_):
         with TestClient(app, headers=ORIGIN) as client:
             start.wait(timeout=5)
             return book(client).status_code
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(reserve, range(2))) == [201, 409]
     with app.state.engine.connect() as conn:
@@ -129,11 +162,26 @@ def test_idempotency_and_any(setup):
     assert book(client, payload(barber="any")).status_code == 409
 
 
-@pytest.mark.parametrize("changes", [
-    {"name": "   "}, {"phone": "123"}, {"note": "x" * 501}, {"services": []},
-    {"services": ["corte", "corte"]}, {"services": ["combo", "corte"]}, {"services": ["inexistente"]},
-    {"barber": "inexistente"}, {"date": "2030-01-06"}, {"date": "2030-01-13"},
-    {"date": "2030-02-30"}, {"time": "18:00"}, {"time": "09:15"}, {"time": "99:99"}, {"price": 1}])
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"name": "   "},
+        {"phone": "123"},
+        {"note": "x" * 501},
+        {"services": []},
+        {"services": ["corte", "corte"]},
+        {"services": ["combo", "corte"]},
+        {"services": ["inexistente"]},
+        {"barber": "inexistente"},
+        {"date": "2030-01-06"},
+        {"date": "2030-01-13"},
+        {"date": "2030-02-30"},
+        {"time": "18:00"},
+        {"time": "09:15"},
+        {"time": "99:99"},
+        {"price": 1},
+    ],
+)
 def test_direct_api_validation(setup, changes):
     assert book(setup[0], payload(**changes)).status_code == 422
 
@@ -145,21 +193,36 @@ def test_past_and_closing(setup, monkeypatch):
     assert book(client, payload(services=["combo", "sobrancelha"], time="17:30")).status_code == 201
     with app.state.engine.begin() as conn:
         conn.execute(update(services).where(services.c.id == "combo").values(duration=100))
-    assert book(client, payload(services=["combo"], barber="lucas", time="17:30")).status_code == 422
+    assert (
+        book(client, payload(services=["combo"], barber="lucas", time="17:30")).status_code == 422
+    )
 
 
 def test_auth_privacy_and_expiry(setup):
     client, app, _ = setup
     saved = book(client).json()
     assert client.get("/api/appointments?start=2030-01-07&end=2030-01-07").status_code == 401
-    assert client.patch(f"/api/appointments/{saved['id']}/status", json={"status": "concluído"}).status_code == 401
+    assert (
+        client.patch(
+            f"/api/appointments/{saved['id']}/status", json={"status": "concluído"}
+        ).status_code
+        == 401
+    )
     result = client.get("/api/availability?date=2030-01-07&barber=rafael&services=corte")
     assert set(result.json()) == {"slots"}
     assert "09:00" not in result.json()["slots"] and "09:30" not in result.json()["slots"]
     assert "Cliente" not in result.text
-    assert client.post("/api/auth/login", json={"username": "equipe", "password": "errada"}).status_code == 401
+    assert (
+        client.post(
+            "/api/auth/login", json={"username": "equipe", "password": "errada"}
+        ).status_code
+        == 401
+    )
     response = login(client)
-    assert "HttpOnly" in response.headers["set-cookie"] and "SameSite=strict" in response.headers["set-cookie"]
+    assert (
+        "HttpOnly" in response.headers["set-cookie"]
+        and "SameSite=strict" in response.headers["set-cookie"]
+    )
     assert client.get("/api/auth/me").status_code == 200
     assert client.post("/api/auth/logout").status_code == 200
     assert client.get("/api/auth/me").status_code == 401
@@ -167,7 +230,10 @@ def test_auth_privacy_and_expiry(setup):
     with app.state.engine.begin() as conn:
         conn.execute(update(sessions).values(expires_at=0))
     assert client.get("/api/auth/me").status_code == 401
-    assert client.post("/api/auth/logout", headers={"Origin": "https://outside.example"}).status_code == 403
+    assert (
+        client.post("/api/auth/logout", headers={"Origin": "https://outside.example"}).status_code
+        == 403
+    )
 
 
 def test_seed_is_repeatable_without_fake_bookings(setup):
@@ -178,7 +244,9 @@ def test_seed_is_repeatable_without_fake_bookings(setup):
         assert not conn.execute(select(appointments)).all()
 
 
-@pytest.mark.parametrize("field,value", [("name", "x" * 201), ("phone", "1" * 31), ("note", "x" * 501)])
+@pytest.mark.parametrize(
+    "field,value", [("name", "x" * 201), ("phone", "1" * 31), ("note", "x" * 501)]
+)
 def test_field_errors_without_personal_values(setup, field, value):
     response = book(setup[0], payload(**{field: value}))
     assert response.status_code == 422
@@ -203,9 +271,11 @@ def test_queries_batched_and_availability_equivalent(setup):
     client, app, _ = setup
     login(client)
     statements = []
+
     def count(_conn, _cursor, statement, _parameters, _context, _many):
         if statement.lstrip().upper().startswith("SELECT"):
             statements.append(statement)
+
     event.listen(app.state.engine, "before_cursor_execute", count)
     try:
         first = book(client, payload(services=["barba"], note="Detalhe")).json()
@@ -224,10 +294,20 @@ def test_queries_batched_and_availability_equivalent(setup):
         assert "09:00" not in result["slots"] and "09:30" in result["slots"]
         assert "10:00" not in result["slots"] and "11:00" not in result["slots"]
         assert "11:30" in result["slots"] and set(result) == {"slots"}
-        any_result = client.get("/api/availability?date=2030-01-07&barber=any&services=barba").json()
+        any_result = client.get(
+            "/api/availability?date=2030-01-07&barber=any&services=barba"
+        ).json()
         assert "09:00" in any_result["slots"]
         client.patch(f"/api/appointments/{first['id']}/status", json={"status": "cancelado"})
-        assert "09:00" in client.get("/api/availability?date=2030-01-07&barber=rafael&services=barba").json()["slots"]
-        assert client.get("/api/appointments?start=2030-01-07&end=2030-01-07&barber=lucas").json() == []
+        assert (
+            "09:00"
+            in client.get("/api/availability?date=2030-01-07&barber=rafael&services=barba").json()[
+                "slots"
+            ]
+        )
+        assert (
+            client.get("/api/appointments?start=2030-01-07&end=2030-01-07&barber=lucas").json()
+            == []
+        )
     finally:
         event.remove(app.state.engine, "before_cursor_execute", count)

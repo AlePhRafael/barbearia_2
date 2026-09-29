@@ -1,0 +1,7 @@
+-r requirements.txt
+httpx2
+mypy
+pip-tools
+pytest
+pytest-cov
+ruff

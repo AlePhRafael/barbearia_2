@@ -20,6 +20,15 @@ O comando `user` solicita a senha sem exibi-la (mínimo 12 caracteres). Não há
 
 `init` aplica migrações Alembic e insere somente o catálogo e os profissionais iniciais. É repetível, não altera preços existentes e não cria reservas fictícias.
 
+Para desenvolvimento do backend, instale `backend/requirements-dev.txt` no lugar do arquivo
+de produção. Os arquivos `.in` declaram dependências diretas e os `.txt` são locks gerados
+com `pip-compile`. Para atualizar os locks, execute dentro de `backend/`:
+
+```powershell
+.venv/Scripts/python.exe -m piptools compile requirements.in --output-file requirements.txt --strip-extras
+.venv/Scripts/python.exe -m piptools compile requirements-dev.in --output-file requirements-dev.txt --strip-extras
+```
+
 ## Iniciar e encerrar
 
 ```powershell
@@ -55,7 +64,22 @@ O navegador chama `/api`, encaminhado pelo Next.js ao FastAPI. O contexto React 
 
 O arquivo ativo fica por padrão em `%LOCALAPPDATA%\VerticeBarbearia\data\barbearia.sqlite3`, **fora do OneDrive**. Não sincronize nem mova o banco ativo enquanto estiver em uso. O SQLite usa transações curtas com `BEGIN IMMEDIATE` para criação/reativação e espera de bloqueio de até cinco segundos. Esta versão usa o journal padrão do SQLite, sem exigir WAL.
 
-Configurações opcionais: `API_INTERNAL_URL` para Next.js (padrão `http://127.0.0.1:8000`); `BARBEARIA_DB_PATH` e `BARBEARIA_ORIGINS` para Python. Consulte `.env.example`. O backend lê variáveis do processo; não carrega arquivos `.env` automaticamente. Em PowerShell: `$env:BARBEARIA_DB_PATH = 'C:\pasta-local\barbearia.sqlite3'`. Use o mesmo ambiente nos comandos de migração, backup e servidor.
+Cada operação usa uma conexão curta, sem pool persistente, reduzindo retenção de arquivos no
+Windows. Parâmetros SQL são ocultados pelo engine para impedir dados pessoais em mensagens
+de diagnóstico.
+
+Configurações opcionais: `API_INTERNAL_URL` para Next.js (padrão `http://127.0.0.1:8000`);
+`BARBEARIA_DB_PATH`, `BARBEARIA_ORIGINS`, `BARBEARIA_SESSION_TTL_SECONDS` e
+`BARBEARIA_COOKIE_SECURE` para Python. Origens são normalizadas e todas as configurações
+são validadas ao criar a aplicação. Consulte `.env.example`. O backend lê variáveis do
+processo; não carrega arquivos `.env` automaticamente. Em PowerShell:
+`$env:BARBEARIA_DB_PATH = 'C:\pasta-local\barbearia.sqlite3'`. Use o mesmo ambiente nos
+comandos de migração, backup e servidor.
+
+O backend é dividido em composição da aplicação, configuração, routers, schemas, serviços,
+consultas SQL e infraestrutura do banco. As regras de reserva ficam fora da camada HTTP e o
+relógio e o engine podem ser injetados em testes. O ciclo de vida do FastAPI encerra o engine
+criado pela aplicação.
 
 A disponibilidade considera a duração total, sobreposição por profissional, horários passados e encerramento às 19h. Domingos não permitem reservas. O combo substitui corte/barba individuais para evitar cobrança duplicada. Faturamento e ticket médio consideram somente atendimentos concluídos; a comparação usa o mesmo filtro no dia anterior.
 
@@ -79,7 +103,7 @@ Confirmações repetidas usam `Idempotency-Key`; a mesma chave e payload retorna
 | `GET /api/auth/me` | Consulta sessão autenticada |
 | `POST /api/auth/logout` | Revoga sessão e cookie |
 
-Criação recebe `services`, `barber` (ID ou `any`), `date`, `time`, `name`, `phone`, `note`. A resposta inclui `items`, `totalCents`, `duration` e código. Payloads e respostas estão documentados em **http://127.0.0.1:8000/docs**. Mutação exige `Origin` permitido (por padrão `http://127.0.0.1:3000` ou `http://localhost:3000`), inclusive em clientes HTTP manuais. Erros: 401 sessão ausente/expirada; 403 origem inválida; 409 conflito; 422 entrada inválida; 503 indisponibilidade do banco.
+Criação recebe `services`, `barber` (ID ou `any`), `date`, `time`, `name`, `phone`, `note`. A resposta inclui `items`, `totalCents`, `duration` e código. Payloads e respostas estão documentados em **http://127.0.0.1:8000/docs**. Mutação exige `Origin` permitido (por padrão `http://127.0.0.1:3000` ou `http://localhost:3000`), inclusive em clientes HTTP manuais. Erros: 401 sessão ausente/expirada; 403 origem inválida; 409 conflito; 422 entrada inválida; 503 indisponibilidade do banco. Toda resposta inclui `X-Request-ID`, `Cache-Control: no-store` e cabeçalhos defensivos. Logs operacionais registram rota, status e duração, sem payload, telefone, senha, cookie ou observação.
 
 Para testar diretamente o backend iniciado, acesse `http://127.0.0.1:8000/`: deve retornar HTTP 200 com `{"status":"ok","message":"API da barbearia funcionando"}`. Em `http://127.0.0.1:8000/favicon.ico`, deve retornar HTTP 200 com o ícone (`image/x-icon`). Esses caminhos são do FastAPI na porta 8000; a página inicial do frontend continua na porta 3000. O ícone fica em `backend/app/static/favicon.ico` e é servido diretamente, sem montagem adicional de `StaticFiles`.
 
@@ -102,6 +126,11 @@ Para restaurar: pare ambos os servidores, arquive o banco atual fora do caminho 
 
 A restauração exige destino inexistente, não apaga o banco anterior. Inicie o sistema e confira a agenda. Para alterações futuras de esquema, crie revisão Alembic e aplique com `init`; não use `create_all` para substituir migrações.
 
+A migração `002` preserva reservas existentes, acrescenta timestamps internos e impõe
+constraints de integridade para status, duração e valores monetários. Em SQLite, tabelas são
+reconstruídas com chaves estrangeiras temporariamente suspensas e verificadas integralmente
+antes de a migração terminar.
+
 ## Estilos e imagens
 
 Tokens de cores ficam em `src/app/globals.css`, com mapeamento para o tema Tailwind. Imagens geradas com a ferramenta integrada ImageGen estão em `src/assets/hero.png`, `rafael.png`, `lucas.png` e `andre.png`. Prompts completos em `src/assets/PROMPTS.md`.
@@ -115,7 +144,19 @@ npm run typecheck
 npm run build
 ```
 
-Backend, dentro de `backend/`: `.venv/Scripts/python.exe -m pytest tests -q`. Os testes usam bancos temporários isolados, relógio controlado, conexões independentes para concorrência e verificam migrações, persistência, histórico, idempotência, sessão e backup. Vitest usa mocks HTTP, não o banco operacional.
+Backend, dentro de `backend/`:
+
+```powershell
+.venv/Scripts/python.exe -m pytest tests -q
+.venv/Scripts/python.exe -m pytest tests --cov=app --cov-report=term-missing -q
+.venv/Scripts/python.exe -m ruff check app migrations tests
+.venv/Scripts/python.exe -m ruff format --check app migrations tests
+.venv/Scripts/python.exe -m mypy app
+```
+
+Os testes usam bancos temporários isolados, relógio controlado, conexões independentes para
+concorrência e verificam migrações, constraints, configuração, cabeçalhos, logs, persistência,
+histórico, idempotência, sessão, CLI e backup. Vitest usa mocks HTTP, não o banco operacional.
 
 Não há pagamentos, envio de mensagens, cadastro independente de clientes ou editor de catálogo. Todos os usuários da equipe têm o mesmo acesso. Não publique esta configuração na internet: HTTP e cookie sem `Secure` são específicos para loopback local; publicação exige HTTPS, ajustes de cookie/origem e revisão operacional.
 
